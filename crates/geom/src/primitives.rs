@@ -44,7 +44,8 @@ pub fn uv_sphere(radius: f32, rings: u32, sectors: u32) -> Result<Mesh, Geometry
         for sector in 0..sectors {
             let a = ring * stride + sector;
             let b = a + stride;
-            indices.extend_from_slice(&[a, b, a + 1, a + 1, b, b + 1]);
+            // Counter-clockwise when seen from outside, so front faces point outward.
+            indices.extend_from_slice(&[a, a + 1, b, a + 1, b + 1, b]);
         }
     }
 
@@ -87,7 +88,8 @@ pub fn torus(major_radius: f32, minor_radius: f32, major_segments: u32, minor_se
         for j in 0..minor_segments {
             let a = i * stride + j;
             let b = a + stride;
-            indices.extend_from_slice(&[a, b, a + 1, a + 1, b, b + 1]);
+            // Counter-clockwise when seen from outside, so front faces point outward.
+            indices.extend_from_slice(&[a, a + 1, b, a + 1, b + 1, b]);
         }
     }
 
@@ -139,5 +141,41 @@ mod tests {
         for normal in &mesh.normals {
             assert!((normal.length() - 1.0).abs() < 1e-4);
         }
+    }
+
+    /// Every triangle must wind counter-clockwise when seen from outside, so its geometric normal
+    /// (cross of its edges) points the same way as the vertex normals. A reversal here makes the
+    /// outer surface back-facing and culled.
+    fn winds_outward(mesh: &Mesh) -> bool {
+        for triangle in mesh.indices.as_chunks::<3>().0 {
+            let [i0, i1, i2] = *triangle;
+            let (Some(&p0), Some(&p1), Some(&p2)) =
+                (mesh.positions.get(i0 as usize), mesh.positions.get(i1 as usize), mesh.positions.get(i2 as usize))
+            else {
+                return false;
+            };
+            let geometric = (p1 - p0).cross(p2 - p0);
+            if geometric.length_squared() < 1e-12 {
+                // Degenerate pole/seam triangle: no orientation to check.
+                continue;
+            }
+            let expected = mesh.normals.get(i0 as usize).copied().unwrap_or_default()
+                + mesh.normals.get(i1 as usize).copied().unwrap_or_default()
+                + mesh.normals.get(i2 as usize).copied().unwrap_or_default();
+            if geometric.dot(expected) <= 0.0 {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[test]
+    fn sphere_winds_outward() {
+        assert!(winds_outward(&uv_sphere(1.0, 12, 16).expect("sphere")));
+    }
+
+    #[test]
+    fn torus_winds_outward() {
+        assert!(winds_outward(&torus(1.0, 0.3, 24, 12).expect("torus")));
     }
 }
