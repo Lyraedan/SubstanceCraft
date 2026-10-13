@@ -55,6 +55,11 @@ pub enum ViewportAction {
         /// The hit triangle index.
         triangle: u32,
     },
+    /// Select the active texture set from the viewport's material dropdown.
+    SelectTextureSet {
+        /// The texture set index.
+        index: usize,
+    },
 }
 
 /// The composite resolution uploaded to the viewport.
@@ -80,7 +85,7 @@ impl Viewport {
         let available = ui.available_size();
         let (rect, response) = ui.allocate_exact_size(available, egui::Sense::click_and_drag());
 
-        let action = self.handle_input(ui, &response, rect, session, tool);
+        let mut action = self.handle_input(ui, &response, rect, session, tool);
 
         let Some(render_state) = frame.wgpu_render_state() else {
             ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, crate::theme::Tokens::DARK.viewport_bg);
@@ -135,6 +140,35 @@ impl Viewport {
             egui::FontId::monospace(11.0),
             crate::theme::Tokens::DARK.text_dim,
         );
+
+        // The material dropdown (top-right), mirroring Painter's active-material selector.
+        let (set_names, active_set) = {
+            let session = lock(session);
+            let project = session.project();
+            (project.texture_sets.iter().map(|set| set.name.clone()).collect::<Vec<_>>(), project.active_texture_set)
+        };
+        if !set_names.is_empty() {
+            let overlay_width = 170.0;
+            let overlay_rect = egui::Rect::from_min_size(
+                egui::pos2((rect.right() - overlay_width - 8.0).max(rect.left() + 8.0), rect.top() + 8.0),
+                egui::vec2(overlay_width, 22.0),
+            );
+            let mut selected = None;
+            ui.scope_builder(egui::UiBuilder::new().max_rect(overlay_rect), |ui| {
+                let active_name = set_names.get(active_set).map(String::as_str).unwrap_or("Material");
+                egui::ComboBox::from_id_salt("sc.viewport.material").width(overlay_width).selected_text(active_name).show_ui(ui, |ui| {
+                    for (index, name) in set_names.iter().enumerate() {
+                        if ui.selectable_label(index == active_set, name).clicked() {
+                            selected = Some(index);
+                        }
+                    }
+                });
+            });
+            if let Some(index) = selected {
+                action = Some(ViewportAction::SelectTextureSet { index });
+            }
+        }
+
         action
     }
 

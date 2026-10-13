@@ -13,6 +13,12 @@ pub struct Tokens {
     pub window_bg: Color32,
     /// Panel and toolbar backgrounds.
     pub panel_bg: Color32,
+    /// The menu bar background (slightly darker than the panels).
+    pub menu_bg: Color32,
+    /// The left icon tool rail background.
+    pub rail_bg: Color32,
+    /// Section header / tab-strip backgrounds inside panels.
+    pub header_bg: Color32,
     /// Raised surfaces: rows, inputs, buttons.
     pub surface: Color32,
     /// Surface under the pointer.
@@ -38,6 +44,9 @@ impl Tokens {
     pub const DARK: Self = Self {
         window_bg: Color32::from_rgb(20, 21, 24),
         panel_bg: Color32::from_rgb(30, 32, 36),
+        menu_bg: Color32::from_rgb(24, 25, 28),
+        rail_bg: Color32::from_rgb(26, 27, 31),
+        header_bg: Color32::from_rgb(36, 38, 43),
         surface: Color32::from_rgb(42, 45, 50),
         surface_hover: Color32::from_rgb(54, 58, 64),
         surface_active: Color32::from_rgb(66, 71, 78),
