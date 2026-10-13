@@ -9,7 +9,7 @@ use std::sync::Arc;
 use craft_settings::{Location, Settings, SettingsStore};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use substancecraft_doc::{BlendMode, Channel, LayerKind, Material, TextureSet};
+use substancecraft_doc::{BlendMode, Channel, Filter, Generator, LayerKind, Material, TextureSet};
 use substancecraft_engine::command::{CommandError, CommandOutcome, CommandRegistry};
 use substancecraft_engine::session::{SharedSession, lock};
 use substancecraft_paint::{Symmetry, ToolKind};
@@ -393,6 +393,25 @@ impl StudioApp {
         });
         ui.add_space(4.0);
         ui.label(egui::RichText::new("Paint tool: left-drag paints; right-drag pans.").color(Tokens::DARK.text_dim));
+
+        ui.add_space(6.0);
+        ui.separator();
+        ui.strong("Generators");
+        for id in Generator::IDS {
+            let label = Generator::from_id(id).map(|generator| generator.label()).unwrap_or(id);
+            if ui.button(label).clicked() {
+                let _ = self.dispatch("layer.add_generator", &json!({ "generator": id }));
+            }
+        }
+        ui.add_space(6.0);
+        ui.separator();
+        ui.strong("Filters");
+        for id in Filter::IDS {
+            let label = Filter::from_id(id).map(|filter| filter.label()).unwrap_or(id);
+            if ui.button(label).clicked() {
+                let _ = self.dispatch("layer.add_filter", &json!({ "filter": id }));
+            }
+        }
     }
 
     /// Turn a viewport paint action into a command.

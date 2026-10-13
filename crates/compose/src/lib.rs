@@ -6,7 +6,7 @@
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
-use substancecraft_doc::{BlendMode, Channel, LayerKind, LayerStack, Material, TextureSet};
+use substancecraft_doc::{BlendMode, Channel, Effect, LayerKind, LayerStack, Material, TextureSet};
 use substancecraft_raster::RasterImage;
 
 /// The default (base) colour of a channel before any layer is applied, derived from the source
@@ -102,6 +102,15 @@ fn composite_paint(image: &mut RasterImage, paint: &RasterImage, coverage: f32, 
     }
 }
 
+/// Mix a filtered image back over the original by coverage (used by filter effects).
+fn composite_filtered(image: &mut RasterImage, filtered: &RasterImage, coverage: f32) {
+    for (pixel, other) in image.pixels.iter_mut().zip(&filtered.pixels) {
+        for component in 0..3 {
+            pixel[component] = (pixel[component] + (other[component] - pixel[component]) * coverage).clamp(0.0, 1.0);
+        }
+    }
+}
+
 /// Composite a whole image (used for groups) over an image.
 fn composite_image(image: &mut RasterImage, group: &RasterImage, coverage: f32, blend: BlendMode) {
     for (index, pixel) in image.pixels.iter_mut().enumerate() {
@@ -133,7 +142,17 @@ fn evaluate_into(stack: &LayerStack, channel: Channel, image: &mut RasterImage) 
             LayerKind::Paint { image: Some(paint) } => {
                 composite_paint(image, paint, coverage, layer.blend, channel);
             }
-            LayerKind::Paint { image: None } | LayerKind::Effect => {}
+            LayerKind::Paint { image: None } => {}
+            LayerKind::Effect { effect } => match effect {
+                Effect::Generator(generator) => {
+                    let generated = substancecraft_material::generate(generator, image.width, image.height);
+                    composite_paint(image, &generated, coverage, layer.blend, channel);
+                }
+                Effect::Filter(filter) => {
+                    let filtered = substancecraft_material::apply(filter, image);
+                    composite_filtered(image, &filtered, coverage);
+                }
+            },
             LayerKind::Group { children } => {
                 let mut group = image.clone();
                 evaluate_into(children, channel, &mut group);
@@ -261,5 +280,36 @@ mod tests {
         stack.push(paint);
         let image = evaluate_channel(&stack, Channel::BaseColor, base(), 2, 2);
         assert!((image.pixel(0, 0)[0] - 0.2).abs() < 1e-6, "transparent paint blacked out the base");
+    }
+
+    #[test]
+    fn generator_effect_fills_the_channel() {
+        let mut stack = LayerStack::new();
+        stack.push(Layer::effect("noise", substancecraft_doc::Effect::Generator(substancecraft_doc::Generator::default_white())));
+        let image = evaluate_channel(&stack, Channel::BaseColor, base(), 8, 8);
+        // White noise fills the channel with varying grayscale, not the black base.
+        let varied = image.pixels.iter().any(|pixel| pixel[0] > 0.01);
+        assert!(varied, "generator effect did not fill the channel");
+    }
+
+    #[test]
+    fn filter_effect_transforms_the_layers_below() {
+        let mut stack = LayerStack::new();
+        stack.push(Layer::fill("base", [0.2, 0.4, 0.8, 1.0], 0.0));
+        stack.push(Layer::effect("invert", substancecraft_doc::Effect::Filter(substancecraft_doc::Filter::Invert)));
+        let image = evaluate_channel(&stack, Channel::BaseColor, base(), 2, 2);
+        assert!((image.pixel(0, 0)[0] - 0.8).abs() < 1e-6, "invert filter did not apply");
+    }
+
+    #[test]
+    fn filter_effect_respects_opacity() {
+        let mut stack = LayerStack::new();
+        stack.push(Layer::fill("base", [0.2, 0.2, 0.2, 1.0], 0.0));
+        let mut effect = Layer::effect("invert", substancecraft_doc::Effect::Filter(substancecraft_doc::Filter::Invert));
+        effect.opacity = 0.5;
+        stack.push(effect);
+        let image = evaluate_channel(&stack, Channel::BaseColor, base(), 1, 1);
+        // mix(0.2, 0.8, 0.5) = 0.5
+        assert!((image.pixel(0, 0)[0] - 0.5).abs() < 1e-6);
     }
 }

@@ -13,5 +13,6 @@ workspace = true
 
 [dependencies]
 substancecraft-raster.workspace = true
+substancecraft-doc.workspace = true
 substancecraft-algo.workspace = true
 thiserror.workspace = true

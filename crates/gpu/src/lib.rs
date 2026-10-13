@@ -86,7 +86,7 @@ fn plan(stack: &LayerStack, channel: Channel) -> Result<Vec<Params>, GpuError> {
             LayerKind::Paint { image: None } => {}
             LayerKind::Paint { .. } => return Err(GpuError::Unsupported("painted layers".to_string())),
             LayerKind::Group { .. } => return Err(GpuError::Unsupported("groups".to_string())),
-            LayerKind::Effect => return Err(GpuError::Unsupported("effects".to_string())),
+            LayerKind::Effect { .. } => return Err(GpuError::Unsupported("effects".to_string())),
         }
     }
     Ok(passes)

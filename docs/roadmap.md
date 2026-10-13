@@ -4,25 +4,25 @@ Milestones and the current focus. The one-page summary is `ROADMAP.md`.
 
 ## Current focus
 
-**M6 — Procedural content.**
+**M7 — Baking.**
 
-M5 is complete (brush/eraser/smudge/clone/polyfill, screen-space sizing, active-layer target). M6 adds
-procedural content and the material shelf:
+M6 is complete (generators/filters, effect layers, shelf). M7 adds mesh-map baking:
 
-1. Generators and filters (`substancecraft-material`): noise (Perlin/Simplex/Voronoi), grunge,
-   levels, blur, distance, curvature.
-2. Effect layers that apply a generator/filter to the layers below (currently pass-through).
-3. A material/noise shelf UI with previews.
-4. Smart materials and smart masks (saved layer-stack snippets).
+1. `substancecraft-bake`: ray-based bakers onto the low-poly UV layout — tangent-space normal, ambient
+   occlusion, curvature, position, thickness, world-space normal, material ID.
+2. Cage generation (implicit) for high-to-low projection.
+3. Baking-mode UI (baker selection, settings, bake log) and a `file.import_mesh` high-poly slot.
+4. Validated against the CPU oracle; reproducible at several resolutions.
 
 See `docs/gaps.md` for the ranked work list.
 
-## M5 deliverables (reference) — done
+## M6 deliverables (reference) — done
 
-1. `paint`: brush/eraser/smudge/clone stamps and UV-island `polyfill`; `ToolKind`. ✅
-2. `geom`: `uv_density` for screen-space sizing. ✅
-3. `engine`: tool state, active-layer target, per-tool strokes, `paint.polyfill`, tool/brush commands. ✅
-4. `ui`: tool palette, per-tool brush controls, screen-space sizing, polyfill dispatch. ✅
+1. `doc`: `Generator`, `Filter`, `Effect` data + `LayerKind::Effect`. ✅
+2. `material`: Perlin/Simplex/Voronoi/White generators; levels/blur/invert/contrast/brightness filters. ✅
+3. `compose`: effect layers (generator fill, filter transform) with opacity. ✅
+4. `engine`: `layer.add_generator` / `layer.add_filter`. ✅
+5. `ui`: shelf panel with generators and filters. ✅
 
 Acceptance: `cargo run -p substancecraft` opens the window, imports a sample glTF/OBJ, orbits with a
 real camera, PBR-shades it with IBL and tone mapping, switches display modes — all via commands; the

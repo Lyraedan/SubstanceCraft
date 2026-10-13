@@ -6,6 +6,8 @@
 
 use substancecraft_raster::RasterImage;
 
+use crate::procedural::Effect;
+
 /// How a layer combines with the accumulated result beneath it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BlendMode {
@@ -111,8 +113,11 @@ pub enum LayerKind {
         /// The children, composited in order.
         children: LayerStack,
     },
-    /// An effect applied to the layers below (pass-through until the content milestone).
-    Effect,
+    /// An effect applied to the layers below (a generator fill or a filter).
+    Effect {
+        /// The generator or filter.
+        effect: Effect,
+    },
 }
 
 impl LayerKind {
@@ -122,7 +127,7 @@ impl LayerKind {
             LayerKind::Fill { .. } => "fill",
             LayerKind::Paint { .. } => "paint",
             LayerKind::Group { .. } => "group",
-            LayerKind::Effect => "effect",
+            LayerKind::Effect { .. } => "effect",
         }
     }
 }
@@ -165,6 +170,19 @@ impl Layer {
     /// A paint layer (empty until painted).
     pub fn paint(name: impl Into<String>) -> Self {
         Self { name: name.into(), visible: true, opacity: 1.0, blend: BlendMode::Normal, mask: None, kind: LayerKind::Paint { image: None } }
+    }
+
+    /// An effect layer (a generator fill or a filter).
+    pub fn effect(name: impl Into<String>, effect: Effect) -> Self {
+        Self { name: name.into(), visible: true, opacity: 1.0, blend: BlendMode::Normal, mask: None, kind: LayerKind::Effect { effect } }
+    }
+
+    /// The effect of an effect layer, if any.
+    pub fn effect_kind(&self) -> Option<Effect> {
+        match &self.kind {
+            LayerKind::Effect { effect } => Some(*effect),
+            _ => None,
+        }
     }
 
     /// The effective coverage of this layer at a point: opacity × mask.

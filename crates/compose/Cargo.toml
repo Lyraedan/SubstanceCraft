@@ -15,5 +15,6 @@ workspace = true
 substancecraft-doc.workspace = true
 substancecraft-raster.workspace = true
 substancecraft-algo.workspace = true
+substancecraft-material.workspace = true
 rayon.workspace = true
 thiserror.workspace = true

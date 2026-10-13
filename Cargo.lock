@@ -3982,6 +3982,7 @@ dependencies = [
  "rayon",
  "substancecraft-algo",
  "substancecraft-doc",
+ "substancecraft-material",
  "substancecraft-raster",
  "thiserror 2.0.21",
 ]
@@ -4064,6 +4065,7 @@ name = "substancecraft-material"
 version = "0.1.0"
 dependencies = [
  "substancecraft-algo",
+ "substancecraft-doc",
  "substancecraft-raster",
  "thiserror 2.0.21",
 ]

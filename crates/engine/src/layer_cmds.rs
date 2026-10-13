@@ -1,7 +1,7 @@
 //! Layer-stack commands: add, delete, reorder, group, and per-layer properties, plus undo/redo.
 
 use serde_json::{Map, Value, json};
-use substancecraft_doc::{BlendMode, Layer, LayerKind, Mask};
+use substancecraft_doc::{BlendMode, Effect, Filter, Generator, Layer, LayerKind, Mask};
 
 use crate::command::{CommandError, CommandOutcome, CommandRegistry, CommandResult, CommandSpec};
 use crate::session::Session;
@@ -14,6 +14,14 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("layer.add_fill", "Add Fill Layer", "Window", "name?: string, color?: [r,g,b,a], value?: number", add_fill),
         CommandSpec::new("layer.add_paint", "Add Paint Layer", "Window", "name?: string", add_paint),
         CommandSpec::new("layer.add_group", "Add Group", "Window", "name?: string", add_group),
+        CommandSpec::new(
+            "layer.add_generator",
+            "Add Generator",
+            "Window",
+            "generator: perlin|simplex|voronoi|white, seed?: number, scale?: number",
+            add_generator,
+        ),
+        CommandSpec::new("layer.add_filter", "Add Filter", "Window", "filter: levels|blur|invert|contrast|brightness, radius?: number", add_filter),
         CommandSpec::new("layer.delete", "Delete Layer", "Window", "index: number", delete),
         CommandSpec::new("layer.set_visible", "Set Layer Visible", "Window", "index: number, visible: bool", set_visible),
         CommandSpec::new("layer.set_opacity", "Set Layer Opacity", "Window", "index: number, opacity: number (0..1)", set_opacity),
@@ -58,6 +66,9 @@ fn list(session: &mut Session, _params: &Value) -> CommandResult {
                 entry.insert("color".into(), json!(color));
                 entry.insert("value".into(), json!(value));
             }
+            if let LayerKind::Effect { effect } = &layer.kind {
+                entry.insert("effect".into(), json!(effect.id()));
+            }
             Value::Object(entry)
         })
         .collect();
@@ -98,6 +109,50 @@ fn add_group(session: &mut Session, params: &Value) -> CommandResult {
     let name = params.get("name").and_then(Value::as_str).unwrap_or("Group").to_string();
     session.add_layer(Layer::group(name.clone()));
     Ok(CommandOutcome::message(format!("added {name}")))
+}
+
+fn add_generator(session: &mut Session, params: &Value) -> CommandResult {
+    let id = params.get("generator").and_then(Value::as_str).ok_or_else(|| invalid("layer.add_generator", "expected a \"generator\" string"))?;
+    let mut generator = Generator::from_id(id).ok_or_else(|| invalid("layer.add_generator", &format!("unknown generator: {id}")))?;
+    if let Some(seed) = params.get("seed").and_then(Value::as_u64) {
+        generator = with_seed(generator, seed as u32);
+    }
+    if let Some(scale) = optional_f32(params, "scale") {
+        generator = with_scale(generator, scale.max(1.0));
+    }
+    let label = generator.label().to_string();
+    session.add_layer(Layer::effect(label.clone(), Effect::Generator(generator)));
+    Ok(CommandOutcome::message(format!("added {label}")))
+}
+
+fn add_filter(session: &mut Session, params: &Value) -> CommandResult {
+    let id = params.get("filter").and_then(Value::as_str).ok_or_else(|| invalid("layer.add_filter", "expected a \"filter\" string"))?;
+    let mut filter = Filter::from_id(id).ok_or_else(|| invalid("layer.add_filter", &format!("unknown filter: {id}")))?;
+    if let Some(radius) = params.get("radius").and_then(Value::as_u64)
+        && let Filter::Blur { .. } = filter
+    {
+        filter = Filter::Blur { radius: (radius as u32).min(64) };
+    }
+    let label = filter.label().to_string();
+    session.add_layer(Layer::effect(label.clone(), Effect::Filter(filter)));
+    Ok(CommandOutcome::message(format!("added {label}")))
+}
+
+fn with_seed(generator: Generator, seed: u32) -> Generator {
+    match generator {
+        Generator::Perlin { scale, octaves, .. } => Generator::Perlin { scale, octaves, seed },
+        Generator::Simplex { scale, octaves, .. } => Generator::Simplex { scale, octaves, seed },
+        Generator::Voronoi { cells, .. } => Generator::Voronoi { cells, seed },
+        Generator::White { .. } => Generator::White { seed },
+    }
+}
+
+fn with_scale(generator: Generator, scale: f32) -> Generator {
+    match generator {
+        Generator::Perlin { octaves, seed, .. } => Generator::Perlin { scale, octaves, seed },
+        Generator::Simplex { octaves, seed, .. } => Generator::Simplex { scale, octaves, seed },
+        other => other,
+    }
 }
 
 fn delete(session: &mut Session, params: &Value) -> CommandResult {
@@ -312,5 +367,17 @@ mod tests {
         assert!(set_mask(&mut session, &json!({ "index": 0, "value": 0.5 })).is_ok());
         assert!(move_layer(&mut session, &json!({ "index": 1, "direction": "down" })).is_ok());
         assert!(move_layer(&mut session, &json!({ "index": 0, "direction": "down" })).is_err());
+    }
+
+    #[test]
+    fn adding_generators_and_filters() {
+        let mut session = Session::new("test");
+        assert!(add_generator(&mut session, &json!({ "generator": "perlin", "seed": 7 })).is_ok());
+        assert!(add_filter(&mut session, &json!({ "filter": "invert" })).is_ok());
+        let stack = session.layers().expect("layers");
+        assert!(matches!(stack.get(0).and_then(|l| l.effect_kind()), Some(Effect::Generator(_))));
+        assert!(matches!(stack.get(1).and_then(|l| l.effect_kind()), Some(Effect::Filter(_))));
+        assert!(add_generator(&mut session, &json!({ "generator": "plasma" })).is_err());
+        assert!(add_filter(&mut session, &json!({ "filter": "warp" })).is_err());
     }
 }

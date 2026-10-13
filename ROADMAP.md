@@ -15,8 +15,9 @@ normal, roughness, metalness, UV checker, wireframe); ground grid and sky/enviro
 wgpu viewport hosted in egui; offscreen snapshot plus live `ui.screenshot`; pinned CC0 assets via
 `cargo xtask assets`.
 
-**M5 — Painting tools: complete.** Brush, eraser, smudge, clone and UV-island polyfill; screen-space
-brush sizing, jitter, symmetry; active-layer target; tool palette and per-tool brush controls. 58 commands.
+**M6 — Procedural content: complete.** Perlin/Simplex/Voronoi/White generators and Levels/Blur/Invert/
+Contrast/Brightness filters; effect layers that fill or transform the layers below; a shelf panel with
+one-click add. 60 commands.
 
 ## Milestones
 
@@ -28,7 +29,8 @@ brush sizing, jitter, symmetry; active-layer target; tool palette and per-tool b
 | **M3** | Layer stack | fill/group layers, masks, blend modes, CPU + GPU compositor, undo ✅ |
 | **M4** | Painting | brush engine, projection painting, live composited base colour ✅ |
 | **M5** | Painting tools | brush/eraser/smudge/clone/polyfill, screen sizing, active layer ✅ |
-| M6 | Procedural content | generators/filters, noise library, smart materials, shelf |
+| **M6** | Procedural content | generators, filters, effect layers, shelf ✅ |
+| M7 | Baking | mesh-map bakers + cage generation, baking mode UI, bake log |
 | M3 | Layer stack | doc model, fill/mask/group/blend, CPU oracle + GPU compositor, undo |
 | M4 | Painting | brush engine, tablet pressure, projection painting |
 | M5 | Painting tools | projection, polyfill, smudge, clone, particle/physics brushes |

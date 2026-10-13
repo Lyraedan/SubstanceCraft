@@ -4,21 +4,31 @@ Where SubstanceCraft stands against Adobe Substance 3D Painter, dimension by dim
 lines carry the date; update the dimension when your work moves it. SubstanceCraft is a clean-room
 reimplementation: parity means comparable behaviour and results, never copied code or assets.
 
-_Last reviewed: 2026-10-13 (M5 complete)._
+_Last reviewed: 2026-10-13 (M6 complete)._
 
 | Dimension | Weight | Status | Notes |
 |---|---|---|---|
 | Project & texture-set workflow | high | 35% | Split by material, list/select/rename, per-set resolution + channels + UV tiles, solo (M2). |
 | Layer stack & blending | high | 45% | Fill/group layers, masks, 8 blend modes, opacity, visibility, undo/redo; CPU + GPU compositor (M3). |
 | Painting engine | high | 62% | Brush/eraser/smudge/clone/polyfill, screen-space sizing, symmetry, jitter, active-layer target, live composited result (M4–M5). |
-| Procedural content (generators/filters/smart materials) | high | 0% | Not started; M6. |
+| Procedural content (generators/filters/smart materials) | high | 40% | Perlin/Simplex/Voronoi/White generators, levels/blur/invert/contrast/brightness filters, effect layers, shelf previews (M6). |
 | Baking (mesh maps + cage) | high | 0% | Not started; M7. |
 | Export (presets, channels, UDIM, OpenPBR) | high | 0% | Not started; M8. |
 | Viewport & PBR preview | medium | 88% | Import, camera, PBR, HDRI IBL, tone mapping, display modes, grid, wireframe, composited base colour, snapshot. |
 | Shaders (OpenPBR / ASM) | medium | 0% | M9. |
-| Automation & scripting | medium | 35% | 58 commands; control channel drives viewport, texture sets, layers, brushes, tools, painting and undo. |
+| Automation & scripting | medium | 35% | 60 commands; control channel drives viewport, texture sets, layers, brushes, tools, paint, effects and undo. |
 | Native project format | medium | 0% | M10. |
 | Performance | medium | n/a | No measurements yet. |
+
+## Procedural content (M6) — complete
+
+- [x] Generators: Perlin (fBm), Simplex (fBm), Voronoi (Worley F1), White noise (seeded, deterministic).
+- [x] Filters: Levels, Blur (separable box), Invert, Contrast, Brightness.
+- [x] Effect layers: a generator fills, a filter transforms the pixels below; opacity blends the filter.
+- [x] Shelf panel listing generators and filters with one-click add; live composite preview.
+- [ ] Smart materials / masks (saved layer-stack snippets).
+- [ ] Grunge/curvature/AO-driven grunge; per-filter parameters UI beyond defaults.
+- [ ] GPU compositing of effect layers (CPU path today).
 
 ## Painting tools (M5) — complete
 
