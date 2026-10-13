@@ -206,6 +206,21 @@ mod tests {
     }
 
     #[test]
+    fn a_stroke_across_a_uv_seam_does_not_paint_a_band() {
+        let mut session = Session::new("test");
+        session.brush_mut().radius_px = 4.0;
+        // A seam jump: u goes 0.99 -> 0.01 across the texture's wrap.
+        stroke_begin(&mut session, &json!({ "u": 0.99, "v": 0.5, "scale": 0.0 })).expect("begin");
+        stroke_extend(&mut session, &json!({ "u": 0.01, "v": 0.5 })).expect("extend");
+        stroke_end(&mut session, &Value::Null).expect("end");
+        let image = top_paint_image(&session).expect("paint image");
+        let middle = image.height / 2;
+        assert!(image.pixel(image.width / 2, middle)[3] < 0.01, "the seam stroke drew a band across the texture");
+        assert!(image.pixel(4, middle)[3] > 0.0, "the far side of the seam was not painted");
+        assert!(image.pixel(image.width - 4, middle)[3] > 0.0, "the near side of the seam was not painted");
+    }
+
+    #[test]
     fn brush_settings_are_clamped() {
         let mut session = Session::new("test");
         set_radius(&mut session, &json!({ "radius": 99999 })).expect("radius");

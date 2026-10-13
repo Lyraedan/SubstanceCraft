@@ -245,6 +245,28 @@ impl StrokeState {
         }
         self.extend(center, step, |position| out.push(position));
     }
+
+    /// The wrapped representative of `center` (unwrapped texture pixels) nearest to the previous
+    /// point, so a stroke that crosses a UV seam stays continuous instead of jumping across the
+    /// whole texture.
+    fn unwrap(&self, center: [f32; 2], size: [f32; 2]) -> [f32; 2] {
+        let Some(last) = self.last else { return center };
+        if size[0] <= 0.0 || size[1] <= 0.0 {
+            return center;
+        }
+        let u = ((last[0] - center[0]) / size[0]).round();
+        let v = ((last[1] - center[1]) / size[1]).round();
+        [center[0] + u * size[0], center[1] + v * size[1]]
+    }
+
+    /// Append the dab positions for a stroke point, following the texture wrap: a UV seam jump is
+    /// folded back to the nearest representative so the stroke stays seamless. `center` is in
+    /// unbounded texture pixels and `size` is the target's pixel size. Positions may lie outside
+    /// `0..size`; the caller wraps them when stamping.
+    pub fn dabs_wrapped(&mut self, center: [f32; 2], step: f32, size: [f32; 2], out: &mut Vec<[f32; 2]>) {
+        let center = self.unwrap(center, size);
+        self.dabs(center, step, out);
+    }
 }
 
 /// The falloff at a normalised distance (`0` centre, `1` edge) for a hardness.
@@ -259,23 +281,29 @@ fn falloff(distance: f32, hardness: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// Iterate the pixels under a dab, calling `visit(x, y, coverage)`.
+/// Iterate the pixels under a dab, calling `visit(x, y, coverage)`. Coordinates wrap around the
+/// image edges so a dab straddling a UV seam paints both sides seamlessly. The radius is capped at
+/// half the smaller dimension so the wrapped footprint never revisits a pixel twice.
 fn for_each_dab_pixel(target: &RasterImage, center: [f32; 2], radius: f32, hardness: f32, alpha: f32, mut visit: impl FnMut(u32, u32, f32)) {
     if target.is_empty() || alpha <= 0.0 {
         return;
     }
-    let radius = radius.max(0.5);
-    let min_x = (center[0] - radius).floor().max(0.0) as u32;
-    let max_x = ((center[0] + radius).ceil() as i64).clamp(0, target.width as i64 - 1) as u32;
-    let min_y = (center[1] - radius).floor().max(0.0) as u32;
-    let max_y = ((center[1] + radius).ceil() as i64).clamp(0, target.height as i64 - 1) as u32;
-    for y in min_y..=max_y {
-        for x in min_x..=max_x {
-            let dx = x as f32 + 0.5 - center[0];
-            let dy = y as f32 + 0.5 - center[1];
+    let width = target.width as f32;
+    let height = target.height as f32;
+    let center = [center[0].rem_euclid(width), center[1].rem_euclid(height)];
+    let radius = radius.max(0.5).min(width * 0.5).min(height * 0.5).max(0.5);
+    let min_x = (center[0] - radius).floor() as i64;
+    let max_x = (center[0] + radius).ceil() as i64;
+    let min_y = (center[1] - radius).floor() as i64;
+    let max_y = (center[1] + radius).ceil() as i64;
+    let (w, h) = (target.width as i64, target.height as i64);
+    for iy in min_y..=max_y {
+        for ix in min_x..=max_x {
+            let dx = ix as f32 + 0.5 - center[0];
+            let dy = iy as f32 + 0.5 - center[1];
             let coverage = falloff((dx * dx + dy * dy).sqrt() / radius, hardness) * alpha;
             if coverage > 0.0 {
-                visit(x, y, coverage.clamp(0.0, 1.0));
+                visit(ix.rem_euclid(w) as u32, iy.rem_euclid(h) as u32, coverage.clamp(0.0, 1.0));
             }
         }
     }
@@ -410,5 +438,25 @@ mod tests {
             assert_eq!(ToolKind::from_id(tool.id()), Some(tool));
         }
         assert_eq!(ToolKind::from_id("nope"), None);
+    }
+
+    #[test]
+    fn a_stroke_crossing_the_seam_stays_continuous() {
+        let mut stroke = StrokeState::new();
+        let mut out = Vec::new();
+        // A seam jump: u goes 0.875 -> 0.125 (a raw "-48px" jump on a 64px texture).
+        stroke.dabs_wrapped([56.0, 32.0], 2.0, [64.0, 64.0], &mut out);
+        stroke.dabs_wrapped([8.0, 32.0], 2.0, [64.0, 64.0], &mut out);
+        // Folded to 72, so the dabs continue past the right edge and never cross the middle.
+        assert!(out.iter().any(|position| position[0] > 63.0), "stroke did not continue across the seam: {out:?}");
+        assert!(out.iter().all(|position| position[0] < 32.0 || position[0] >= 56.0), "stroke crossed the middle: {out:?}");
+    }
+
+    #[test]
+    fn a_dab_at_the_edge_wraps_to_the_other_side() {
+        let mut target = RasterImage::new(64, 64);
+        paint_stamp(&mut target, [0.5, 32.0], 6.0, 1.0, [1.0, 0.0, 0.0, 1.0], 1.0);
+        assert!(target.pixel(0, 32)[0] > 0.0, "dab missed the near edge");
+        assert!(target.pixel(63, 32)[0] > 0.0, "dab did not wrap across the edge to the far side");
     }
 }

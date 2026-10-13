@@ -677,8 +677,9 @@ impl Session {
         let mut stroke = self.stroke.take().unwrap_or_default();
         let mut positions = Vec::new();
         if let Some(image) = self.active_paint_image_mut() {
+            let size = [image.width as f32, image.height as f32];
             let center = uv_to_pixels(u, v, image.width, image.height);
-            stroke.dabs(center, step, &mut positions);
+            stroke.dabs_wrapped(center, step, size, &mut positions);
         }
         self.stroke = Some(stroke);
 
@@ -686,7 +687,9 @@ impl Session {
         if let Some(image) = self.active_paint_image_mut() {
             let (width, height) = (image.width as f32, image.height as f32);
             for position in positions {
+                let position = [position[0].rem_euclid(width), position[1].rem_euclid(height)];
                 for center in brush.symmetry.centers(position, width, height) {
+                    let center = [center[0].rem_euclid(width), center[1].rem_euclid(height)];
                     match tool {
                         ToolKind::Brush => paint_stamp(image, center, radius, brush.hardness, brush.color, alpha),
                         ToolKind::Eraser => erase_stamp(image, center, radius, brush.hardness, alpha),
@@ -906,9 +909,11 @@ impl Session {
     }
 }
 
-/// Convert UV to texture pixel coordinates, wrapping into `0..1`.
+/// Convert UV to unbounded texture pixel coordinates. The stroke folds UV-seam jumps back to the
+/// nearest representative (see `StrokeState::dabs_wrapped`) and the dab footprint wraps around the
+/// image edges, so UVs outside `0..1` (and exact `1.0`) paint seamlessly.
 fn uv_to_pixels(u: f32, v: f32, width: u32, height: u32) -> [f32; 2] {
-    [u.rem_euclid(1.0) * width as f32, v.rem_euclid(1.0) * height as f32]
+    [u * width as f32, v * height as f32]
 }
 
 /// The resident byte size of the paint images in a layer stack (recursing into groups).
