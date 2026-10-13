@@ -213,6 +213,11 @@ impl StudioApp {
             {
                 self.report(self.dispatch("ui.screenshot", &json!({ "path": path.to_string_lossy() })));
             }
+            if ui.button("Export…").clicked()
+                && let Some(dir) = rfd::FileDialog::new().pick_folder()
+            {
+                self.report(self.dispatch("file.export_textures", &json!({ "dir": dir.to_string_lossy(), "resolution": 1024 })));
+            }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut show_sets = self.ui_state().show_texture_sets;

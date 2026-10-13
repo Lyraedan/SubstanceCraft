@@ -4,7 +4,7 @@ Where SubstanceCraft stands against Adobe Substance 3D Painter, dimension by dim
 lines carry the date; update the dimension when your work moves it. SubstanceCraft is a clean-room
 reimplementation: parity means comparable behaviour and results, never copied code or assets.
 
-_Last reviewed: 2026-10-13 (M7 complete)._
+_Last reviewed: 2026-10-13 (M8 complete)._
 
 | Dimension | Weight | Status | Notes |
 |---|---|---|---|
@@ -13,12 +13,22 @@ _Last reviewed: 2026-10-13 (M7 complete)._
 | Painting engine | high | 62% | Brush/eraser/smudge/clone/polyfill, screen-space sizing, symmetry, jitter, active-layer target, live composited result (M4–M5). |
 | Procedural content (generators/filters/smart materials) | high | 40% | Perlin/Simplex/Voronoi/White generators, levels/blur/invert/contrast/brightness filters, effect layers, shelf (M6). |
 | Baking (mesh maps + cage) | high | 50% | BVH-accelerated bakers: position, world/tangent normal, AO, thickness, curvature, material ID; high-poly import; save to PNG (M7). |
-| Export (presets, channels, UDIM, OpenPBR) | high | 0% | Not started; M8. |
+| Export (presets, channels, UDIM, OpenPBR) | high | 55% | Channel export (PNG 8/16, TGA, EXR), presets (OpenPBR/glTF/Unreal/Unity/Spec-Gloss), packing, naming templates, UDIM naming, round-trip test (M8). |
 | Viewport & PBR preview | medium | 88% | Import, camera, PBR, HDRI IBL, tone mapping, display modes, grid, wireframe, composited base colour, snapshot. |
 | Shaders (OpenPBR / ASM) | medium | 0% | M9. |
-| Automation & scripting | medium | 35% | 67 commands; control channel drives viewport, texture sets, layers, brushes, tools, paint, effects, baking and undo. |
+| Automation & scripting | medium | 35% | 70 commands; control channel drives viewport, texture sets, layers, brushes, tools, paint, effects, baking and export. |
 | Native project format | medium | 0% | M10. |
 | Performance | medium | n/a | No measurements yet. |
+
+## Export (M8) — complete
+
+- [x] Channel export at a chosen resolution: PNG 8-bit, PNG 16-bit, TGA, EXR 32-bit float.
+- [x] Presets: OpenPBR (all channels), glTF (metallic-roughness + occlusion packing), Unreal (ORM), Unity (mask), Spec/Gloss.
+- [x] Channel packing (R/G/B/A from any channel) and naming templates (`$textureSet`, `$channel`, `$udim`).
+- [x] UDIM naming (`$udim`) wired; one file per UV tile.
+- [x] Round-trip test: exported PNGs re-import to identical values.
+- [ ] Per-tile UDIM content (painting is not UDIM-aware yet).
+- [ ] USD/OpenPBR material export; batch export across texture sets; saved preset/config files.
 
 ## Baking (M7) — complete
 

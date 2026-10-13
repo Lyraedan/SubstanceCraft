@@ -15,9 +15,9 @@ normal, roughness, metalness, UV checker, wireframe); ground grid and sky/enviro
 wgpu viewport hosted in egui; offscreen snapshot plus live `ui.screenshot`; pinned CC0 assets via
 `cargo xtask assets`.
 
-**M7 — Baking: complete.** BVH-accelerated ray queries and bakers for position, world/tangent-space
-normal, ambient occlusion, thickness, curvature and material ID; high-poly import; a bake panel with
-settings, log and per-map PNG save. 67 commands.
+**M8 — Export: complete.** Channel export (PNG 8/16-bit, TGA, EXR), export presets
+(OpenPBR/glTF/Unreal/Unity/Spec-Gloss), channel packing, naming templates and UDIM naming, a round-trip
+test, and an Export button. 70 commands.
 
 ## Milestones
 
@@ -31,7 +31,8 @@ settings, log and per-map PNG save. 67 commands.
 | **M5** | Painting tools | brush/eraser/smudge/clone/polyfill, screen sizing, active layer ✅ |
 | **M6** | Procedural content | generators, filters, effect layers, shelf ✅ |
 | **M7** | Baking | BVH mesh-map bakers, high-poly import, bake panel + log ✅ |
-| M8 | Export | presets, channel config, naming conventions, UDIM, OpenPBR mapping |
+| **M8** | Export | formats, presets, packing, naming, UDIM, round-trip ✅ |
+| M9 | Workflow depth | OpenPBR/ASM shaders, shader params, post-effects, anchors, instancing |
 | M3 | Layer stack | doc model, fill/mask/group/blend, CPU oracle + GPU compositor, undo |
 | M4 | Painting | brush engine, tablet pressure, projection painting |
 | M5 | Painting tools | projection, polyfill, smudge, clone, particle/physics brushes |

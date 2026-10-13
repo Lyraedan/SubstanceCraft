@@ -4,7 +4,7 @@ Measured numbers, not estimates. Generated targets (`scorecard/*.toml`, `perf/bu
 `cargo xtask scorecard` task arrive with the performance milestone (M12). Until then this file is
 maintained by hand.
 
-_Last measured: 2026-10-13 (M7)._
+_Last measured: 2026-10-13 (M8)._
 
 ## Workspace
 
@@ -12,22 +12,21 @@ _Last measured: 2026-10-13 (M7)._
 |---|---|
 | Crates | 18 |
 | Apps | 2 |
-| Registered commands | 67 |
-| Rust files / lines | 56 / ~10.9k |
+| Registered commands | 70 |
+| Rust files / lines | 58 / ~11.5k |
 | `cargo xtask ci` | green |
 
-## Compositor / painting / content / baking
+## Compositor / painting / content / baking / export
 
 | Check | Result |
 |---|---|
 | GPU fill-stack composite vs independent CPU reference | within 2e-3 |
 | BVH ray query vs brute force | identical distance |
 | Generators deterministic and in range | Perlin/Simplex/Voronoi/White |
-| Effect layers (generator fill, filter transform, opacity) | verified |
 | Projection paint → composite → viewport base colour | verified |
-| Brush / eraser / polyfill tools | verified |
-| Bake 7 maps at 128², 8 AO samples | 0.93 s (release: faster) |
-| A stroke is a single undo step | verified |
+| Bake 7 maps at 256², 16 AO samples (release) | 0.43 s |
+| Export channel round-trip (PNG) | within 1/255 |
+| Export presets + ORM packing | verified |
 
 ## Performance budgets
 

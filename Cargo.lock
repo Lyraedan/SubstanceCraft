@@ -4056,8 +4056,10 @@ dependencies = [
  "image",
  "obj",
  "substancecraft-codecs",
+ "substancecraft-compose",
  "substancecraft-doc",
  "substancecraft-geom",
+ "substancecraft-raster",
  "thiserror 2.0.21",
 ]
 

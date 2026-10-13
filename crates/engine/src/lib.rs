@@ -10,6 +10,7 @@
 pub mod bake_cmds;
 pub mod command;
 pub mod commands;
+pub mod export_cmds;
 pub mod layer_cmds;
 pub mod paint_cmds;
 pub mod scene_cmds;

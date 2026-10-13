@@ -2,29 +2,30 @@
 
 Every known shortfall, ranked. The work list to pick from. New entries go at the top of their tier.
 
-_Last reviewed: 2026-10-13 (M7 complete)._
+_Last reviewed: 2026-10-13 (M8 complete)._
+
+## Export polish (deferred from M8)
+
+1. **Per-tile UDIM content.** `$udim` naming is wired, but every tile writes the same image (painting is
+   not UDIM-aware).
+2. **No USD / OpenPBR material export**, and no `.sbsar`-style material package.
+3. **No saved export presets/config files** or batch export across all texture sets.
+4. **No edge padding / dilation** on export.
 
 ## Baking polish (deferred from M7)
 
-1. **No explicit/implicit cage mesh** export or skew correction; projection uses a fixed normal offset.
-2. **No edge padding / dilation** of the baked result across UV seams.
-3. **Per-map settings** (AO distance, thickness distance, cage size) are baked from shared defaults.
-4. **Baked maps are not yet wired into generators/masks** (no curvature/AO-driven grunge input).
-5. **CPU baker**; a GPU baker is a later optimisation.
+5. **No explicit/implicit cage mesh** or skew correction.
+6. **Per-map settings** are baked from shared defaults.
+7. **Baked maps are not yet wired into generators/masks.**
+8. **CPU baker.**
 
-## Procedural-content polish (deferred from M6)
+## Procedural / painting polish
 
-6. **No smart materials / smart masks.**
-7. **Filter/generator parameters are not editable in the UI** beyond defaults.
-8. **No grunge library or directional content.**
-9. **Effect layers are CPU-composited.**
-
-## Painting polish (deferred from M4–M5)
-
-10. **No native pen pressure/tilt.**
-11. **No physics brushes.**
-12. **CPU painting**; streamed/GPU paint is later.
-13. **Painting is not UDIM-aware.**
+9. **No smart materials / smart masks.**
+10. **Filter/generator parameters are not editable in the UI** beyond defaults.
+11. **No grunge library.**
+12. **Effect layers are CPU-composited.**
+13. **No native pen pressure/tilt; no physics brushes; CPU painting; not UDIM-aware.**
 
 ## Layer-stack / texture-set / viewport polish
 
@@ -36,7 +37,7 @@ _Last reviewed: 2026-10-13 (M7 complete)._
 
 ## Next milestones
 
-19. **No export.** M8. **No OpenPBR/ASM shaders** (M9). **No native project format** (M10).
+19. **No OpenPBR/ASM shaders** (M9). **No native project format** (M10). **No MCP** (M11).
 
 ## Infrastructure
 
@@ -45,4 +46,4 @@ _Last reviewed: 2026-10-13 (M7 complete)._
 
 ## Documentation
 
-22. Parity matrices beyond viewport/texture sets/layers/painting/procedural/baking/automation are still 0%.
+22. Parity matrices beyond viewport/texture sets/layers/painting/procedural/baking/export/automation are still 0%.

@@ -4,25 +4,26 @@ Milestones and the current focus. The one-page summary is `ROADMAP.md`.
 
 ## Current focus
 
-**M8 — Export.**
+**M9 — Workflow depth.**
 
-M7 is complete (BVH bakers, high-poly import, bake panel). M8 exports the composited texture set:
+M8 is complete (channel export with presets/packing/naming/UDIM). M9 deepens the material workflow:
 
-1. `substancecraft-io`: export each channel of a texture set to 8/16-bit PNG/TGA and 16/32-bit EXR at
-   a chosen resolution.
-2. Export presets (Unreal, Unity, glTF, OpenPBR, spec/gloss) and per-channel packing.
-3. Naming conventions (`$textureSet_$channel`) and output templates/subfolders.
-4. UDIM / UV-tile export.
-5. A round-trip test: exported maps re-import to identical values.
+1. OpenPBR and legacy (metal-rough / spec-gloss / ASM-style) shaders with editable parameters,
+   selected per texture set (shader instances).
+2. Shader parameters feeding the viewport and export.
+3. Post-effects (tone mapping variants, bloom, vignette) as a post-process chain.
+4. Anchor points and layer instancing across texture sets.
+5. Physical-size scaling for UV projection.
 
 See `docs/gaps.md` for the ranked work list.
 
-## M7 deliverables (reference) — done
+## M8 deliverables (reference) — done
 
-1. `geom`: `Bvh` (median-split build, stack traversal) with a brute-force cross-check. ✅
-2. `bake`: position, world/tangent normal, AO, thickness, curvature, material ID. ✅
-3. `engine`: high-poly import, bake settings, `bake.run/list/save`. ✅
-4. `ui`: bake panel (resolution, samples, high-poly, run, per-map save) and log. ✅
+1. `codecs`: PNG 8-bit/16-bit, TGA, EXR writers and a raw RGBA loader. ✅
+2. `io::export`: formats, presets, packing, naming, UDIM naming, `export_set`. ✅
+3. `engine`: `file.export_textures`, `export.presets`, `export.formats`. ✅
+4. `ui`: Export button. ✅
+5. Round-trip test. ✅
 
 Acceptance: `cargo run -p substancecraft` opens the window, imports a sample glTF/OBJ, orbits with a
 real camera, PBR-shades it with IBL and tone mapping, switches display modes — all via commands; the

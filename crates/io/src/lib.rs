@@ -6,8 +6,10 @@
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod export;
 pub mod mesh_import;
 
+pub use export::{ExportFormat, ExportPreset, ExportSettings, Packing, export_set, preset, presets};
 pub use mesh_import::{load_gltf, load_obj, load_scene};
 
 use substancecraft_doc::Scene;
@@ -34,6 +36,9 @@ pub enum IoError {
     /// The file contained no drawable geometry.
     #[error("the file contains no geometry")]
     Empty,
+    /// An image codec failed.
+    #[error("image codec error: {0}")]
+    Codec(#[from] substancecraft_codecs::CodecError),
 }
 
 /// A small procedural demo model (a torus) so the viewport shows something with no assets.

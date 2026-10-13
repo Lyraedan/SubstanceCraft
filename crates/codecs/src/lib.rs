@@ -118,6 +118,64 @@ pub fn save_png(path: impl AsRef<Path>, width: u32, height: u32, rgba: &[u8]) ->
     buffer.save(path.as_ref()).map_err(|err| CodecError::Decode(err.to_string()))
 }
 
+/// Encode tightly packed 16-bit RGBA samples to a PNG file.
+pub fn save_png16(path: impl AsRef<Path>, width: u32, height: u32, rgba: &[u16]) -> Result<(), CodecError> {
+    if width == 0 || height == 0 {
+        return Err(CodecError::Empty);
+    }
+    let expected = (width as usize).saturating_mul(height as usize).saturating_mul(4);
+    if rgba.len() < expected {
+        return Err(CodecError::Decode(format!("expected {expected} samples, got {}", rgba.len())));
+    }
+    let buffer = image::ImageBuffer::<image::Rgba<u16>, Vec<u16>>::from_raw(width, height, rgba[..expected].to_vec())
+        .ok_or_else(|| CodecError::Decode("could not build the 16-bit image buffer".to_string()))?;
+    buffer.save(path.as_ref()).map_err(|err| CodecError::Decode(err.to_string()))
+}
+
+/// Encode tightly packed RGBA8 bytes to a TGA file.
+pub fn save_tga(path: impl AsRef<Path>, width: u32, height: u32, rgba: &[u8]) -> Result<(), CodecError> {
+    if width == 0 || height == 0 {
+        return Err(CodecError::Empty);
+    }
+    let expected = (width as usize).saturating_mul(height as usize).saturating_mul(4);
+    if rgba.len() < expected {
+        return Err(CodecError::Decode(format!("expected {expected} bytes, got {}", rgba.len())));
+    }
+    let buffer = image::RgbaImage::from_raw(width, height, rgba[..expected].to_vec())
+        .ok_or_else(|| CodecError::Decode("could not build the image buffer".to_string()))?;
+    buffer.save(path.as_ref()).map_err(|err| CodecError::Decode(err.to_string()))
+}
+
+/// Encode linear 32-bit RGBA samples (`width * height * 4`) to an EXR file.
+pub fn save_exr(path: impl AsRef<Path>, width: u32, height: u32, rgba: &[f32]) -> Result<(), CodecError> {
+    if width == 0 || height == 0 {
+        return Err(CodecError::Empty);
+    }
+    let expected = (width as usize).saturating_mul(height as usize).saturating_mul(4);
+    if rgba.len() < expected {
+        return Err(CodecError::Decode(format!("expected {expected} samples, got {}", rgba.len())));
+    }
+    let w = width as usize;
+    exr::prelude::write_rgba_file(path.as_ref(), w, height as usize, |x, y| {
+        let index = (y * w + x) * 4;
+        (rgba[index], rgba[index + 1], rgba[index + 2], rgba[index + 3])
+    })
+    .map_err(|err| CodecError::Decode(err.to_string()))
+}
+
+/// Load any supported image as linear-normalised RGBA (`0..1`, no gamma conversion).
+pub fn load_rgba8(path: impl AsRef<Path>) -> Result<ImageF32, CodecError> {
+    let image = image::open(path.as_ref()).map_err(|err| CodecError::Decode(err.to_string()))?;
+    let rgba = image.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    if width == 0 || height == 0 {
+        return Err(CodecError::Empty);
+    }
+    let pixels =
+        rgba.pixels().map(|pixel| [pixel[0] as f32 / 255.0, pixel[1] as f32 / 255.0, pixel[2] as f32 / 255.0, pixel[3] as f32 / 255.0]).collect();
+    Ok(ImageF32 { width, height, pixels })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
