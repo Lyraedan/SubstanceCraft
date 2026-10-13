@@ -82,6 +82,8 @@ pub struct RenderSettings {
     pub show_grid: bool,
     /// Whether to draw the procedural sky background (otherwise a flat clear colour).
     pub show_background: bool,
+    /// Whether to draw only the active texture set's geometry.
+    pub isolate_active_set: bool,
 }
 
 impl Default for RenderSettings {
@@ -97,6 +99,7 @@ impl Default for RenderSettings {
             ambient_ground: [0.08, 0.07, 0.06],
             show_grid: true,
             show_background: true,
+            isolate_active_set: false,
         }
     }
 }

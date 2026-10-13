@@ -19,7 +19,7 @@ pub struct Submesh {
 
 /// An indexed triangle mesh. All per-vertex arrays are parallel: index `i` names the same vertex
 /// in `positions`, `normals`, `uvs` and `tangents`.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Mesh {
     /// Vertex positions, object space.
     pub positions: Vec<Vec3>,

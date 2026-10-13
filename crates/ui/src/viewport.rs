@@ -12,6 +12,7 @@ pub struct Viewport {
     uploaded_size: (u32, u32),
     uploaded_scene_revision: u64,
     uploaded_environment_revision: u64,
+    applied_selection: Option<(u64, bool)>,
 }
 
 impl Viewport {
@@ -36,6 +37,7 @@ impl Viewport {
         }
 
         self.upload_if_changed(&render_state.device, &render_state.queue, session);
+        self.apply_selection(session);
 
         let resized = self.renderer.as_ref().is_none_or(|renderer| renderer.size() != (width, height));
         if resized && let Some(renderer) = self.renderer.as_mut() {
@@ -90,6 +92,22 @@ impl Viewport {
             }
             self.uploaded_environment_revision = environment_revision;
         }
+    }
+
+    /// Apply texture-set isolation: hide non-active sets when solo is on.
+    fn apply_selection(&mut self, session: &SharedSession) {
+        let (revision, isolate, materials) = {
+            let guard = lock(session);
+            let isolate = guard.settings().isolate_active_set;
+            (guard.texture_set_revision(), isolate, isolate.then(|| guard.active_materials()))
+        };
+        if self.applied_selection == Some((revision, isolate)) {
+            return;
+        }
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.set_visible_materials(materials);
+        }
+        self.applied_selection = Some((revision, isolate));
     }
 
     fn handle_camera(&mut self, ui: &egui::Ui, response: &egui::Response, rect: egui::Rect, session: &SharedSession) {

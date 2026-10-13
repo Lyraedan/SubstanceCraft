@@ -11,6 +11,7 @@ pub mod command;
 pub mod commands;
 pub mod scene_cmds;
 pub mod session;
+pub mod texture_set_cmds;
 pub mod ui_cmds;
 pub mod viewport_cmds;
 

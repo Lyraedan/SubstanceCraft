@@ -115,6 +115,7 @@ pub struct ViewportRenderer {
     edge_vertex_count: u32,
     grid_buffer: wgpu::Buffer,
     grid_vertex_count: u32,
+    visible_materials: Option<Vec<u32>>,
 
     color: Option<wgpu::Texture>,
     color_view: Option<wgpu::TextureView>,
@@ -340,6 +341,7 @@ impl ViewportRenderer {
             edge_vertex_count: 0,
             grid_buffer,
             grid_vertex_count: grid_vertices.len() as u32,
+            visible_materials: None,
             color: None,
             color_view: None,
             depth_view: None,
@@ -510,6 +512,11 @@ impl ViewportRenderer {
         self.has_environment = false;
     }
 
+    /// Restrict drawing to the given material ids; `None` draws every submesh.
+    pub fn set_visible_materials(&mut self, materials: Option<Vec<u32>>) {
+        self.visible_materials = materials;
+    }
+
     /// (Re)create the offscreen colour and depth targets. A zero size is treated as 1×1.
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         let width = width.max(1);
@@ -625,6 +632,11 @@ impl ViewportRenderer {
                 pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                 pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 for draw in &self.draws {
+                    if let Some(visible) = &self.visible_materials
+                        && !visible.contains(&draw.material)
+                    {
+                        continue;
+                    }
                     let material = draw.material.min(MAX_MATERIALS as u32 - 1);
                     let offset = material * self.material_stride;
                     pass.set_bind_group(1, &self.material_bind_group, &[offset]);

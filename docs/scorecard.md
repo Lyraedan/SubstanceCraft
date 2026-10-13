@@ -4,7 +4,7 @@ Measured numbers, not estimates. Generated targets (`scorecard/*.toml`, `perf/bu
 `cargo xtask scorecard` task arrive with the performance milestone (M12). Until then this file is
 maintained by hand.
 
-_Last measured: 2026-10-13 (M1)._
+_Last measured: 2026-10-13 (M2)._
 
 ## Workspace
 
@@ -12,8 +12,8 @@ _Last measured: 2026-10-13 (M1)._
 |---|---|
 | Crates | 18 |
 | Apps | 2 |
-| Registered commands | 17 |
-| Rust files / lines | 46 / ~4.9k |
+| Registered commands | 25 |
+| Rust files / lines | 48 / ~5.7k |
 | `cargo xtask ci` | green |
 
 ## Performance budgets

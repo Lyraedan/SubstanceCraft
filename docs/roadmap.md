@@ -4,32 +4,28 @@ Milestones and the current focus. The one-page summary is `ROADMAP.md`.
 
 ## Current focus
 
-**M2 — Texture sets & UV tiles.**
+**M3 — Layer stack.**
 
-M1 is complete (import, camera, PBR + HDRI IBL, tone mapping, display modes, grid, wireframe,
-offscreen and live screenshots, pinned assets). Next:
+M2 is complete (mesh split into texture sets by material; list/select/rename; per-set resolution,
+channels and UV tiles; solo isolation). M3 builds the non-destructive layer system:
 
-1. Split the imported mesh into **texture sets** by material id (and, for UDIM projects, group or
-   separate UV tiles).
-2. A texture-set list UI that switches the active set and drives per-set channel configuration.
-3. Per-set channel selection (base colour, roughness, metalness, normal, height, AO…) using the
-   OpenPBR channel set, and per-set shader assignment.
-4. UDIM / UV-tile handling so painting can later span tiles seamlessly.
+1. Extend the document model (`substancecraft-doc`) with a per-texture-set **layer stack**: fill,
+   paint, effect and group nodes, each with an optional mask.
+2. **Blend modes** and per-layer opacity, evaluated per channel.
+3. A **CPU compositor** (`substancecraft-compose`) as the oracle, and the **GPU compositor**
+   (`substancecraft-gpu`) with wgpu render targets; validate the GPU against the CPU.
+4. A **layer-stack UI** (add/remove/reorder/group/visibility/opacity/blend).
+5. **Undo/redo** through commands.
 
 See `docs/gaps.md` for the ranked work list.
 
-## M1 deliverables (reference) — done
+## M2 deliverables (reference) — done
 
-1. `substancecraft-geom`: mesh types, OBJ + glTF import, tangents, bounds and focus math. ✅
-2. `substancecraft-render` + `substancecraft-gpu`: metal/rough PBR, HDRI IBL, tone mapping, exposure. ✅
-3. `substancecraft-color`: colour pipeline and tone-mapping tests. ✅
-4. Camera: orbit / pan / dolly / focus; perspective and orthographic; grid. ✅
-5. Display modes: base colour, normal, roughness, metalness, UV checker, wireframe. ✅
-6. Commands: `file.import_mesh`, `scene.*`, `viewport.*`, `ui.screenshot`. ✅
-7. UI: viewport panel hosting the render target; toolbar. ✅
-8. Control channel drives the live viewport; `--control`. ✅
-9. Offscreen snapshot example plus a smoke test. ✅
-10. `cargo xtask assets`: pinned, SHA-256-verified CC0 assets. ✅
+1. `Project`/`TextureSet`/`Channel`/`UvTile` in `doc`; split by material id. ✅
+2. Per-set resolution, channel set and UDIM tile detection/editing. ✅
+3. Texture-set commands (list/select/rename/resolution/channel/uv-tile/solo). ✅
+4. Texture-set list UI with selection, rename, channels, resolution, tiles, solo. ✅
+5. Viewport isolation of the active set (solo). ✅
 
 Acceptance: `cargo run -p substancecraft` opens the window, imports a sample glTF/OBJ, orbits with a
 real camera, PBR-shades it with IBL and tone mapping, switches display modes — all via commands; the

@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use substancecraft_codecs::ImageF32;
-use substancecraft_doc::Scene;
+use substancecraft_doc::{Channel, Project, Scene, TextureSet, UvTile};
 use substancecraft_render::{OrbitCamera, RenderSettings};
 
 /// A session shared between the UI thread and background servers (control channel, MCP).
@@ -30,10 +30,12 @@ pub struct Session {
     revision: u64,
     /// A monotonically increasing status message shown in the status bar.
     status: Option<String>,
-    /// The imported scene the viewport draws.
-    scene: Scene,
+    /// The open project: the scene and its texture sets.
+    project: Project,
     /// Bumped only when the scene changes, so the renderer re-uploads geometry.
     scene_revision: u64,
+    /// Bumped when the texture sets change (split, select, rename, channels, tiles).
+    texture_set_revision: u64,
     /// The linear HDR environment for image-based lighting, if any.
     environment: Option<Arc<ImageF32>>,
     /// Bumped when the environment changes, so the renderer re-uploads it.
@@ -59,8 +61,9 @@ impl Session {
             label: label.into(),
             revision: 0,
             status: None,
-            scene: Scene::default(),
+            project: Project::new("untitled"),
             scene_revision: 1,
+            texture_set_revision: 1,
             environment: None,
             environment_revision: 1,
             camera: OrbitCamera::default(),
@@ -101,19 +104,106 @@ impl Session {
 
     /// The current scene.
     pub fn scene(&self) -> &Scene {
-        &self.scene
+        &self.project.scene
     }
 
-    /// Replace the scene and bump the revision.
+    /// Replace the scene, rebuilding the texture sets, and bump the revisions.
     pub fn set_scene(&mut self, scene: Scene) {
-        self.scene = scene;
+        self.project.scene = scene;
+        self.project.rebuild_texture_sets();
         self.scene_revision = self.scene_revision.saturating_add(1);
-        self.touch();
+        self.bump_texture_sets();
     }
 
     /// Bumped when the scene changes, so the renderer re-uploads geometry.
     pub fn scene_revision(&self) -> u64 {
         self.scene_revision
+    }
+
+    /// The open project.
+    pub fn project(&self) -> &Project {
+        &self.project
+    }
+
+    /// The texture sets.
+    pub fn texture_sets(&self) -> &[TextureSet] {
+        &self.project.texture_sets
+    }
+
+    /// The index of the active texture set.
+    pub fn active_texture_set(&self) -> usize {
+        self.project.active_texture_set
+    }
+
+    /// The material ids of the active texture set, for viewport isolation.
+    pub fn active_materials(&self) -> Vec<u32> {
+        self.project.active_materials()
+    }
+
+    /// Bumped when the texture sets change, so the viewport re-applies selection.
+    pub fn texture_set_revision(&self) -> u64 {
+        self.texture_set_revision
+    }
+
+    fn bump_texture_sets(&mut self) {
+        self.texture_set_revision = self.texture_set_revision.saturating_add(1);
+        self.touch();
+    }
+
+    /// Select a texture set; returns false if out of range.
+    pub fn select_texture_set(&mut self, index: usize) -> bool {
+        if self.project.select(index) {
+            self.bump_texture_sets();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Rename the active texture set.
+    pub fn rename_texture_set(&mut self, name: impl Into<String>) {
+        if let Some(set) = self.project.active_set_mut() {
+            set.name = name.into();
+            self.bump_texture_sets();
+        }
+    }
+
+    /// Set the active texture set's resolution (clamped to a sane range).
+    pub fn set_texture_resolution(&mut self, resolution: u32) {
+        if let Some(set) = self.project.active_set_mut() {
+            set.resolution = resolution.clamp(32, 8192);
+            self.bump_texture_sets();
+        }
+    }
+
+    /// Enable or disable a channel on the active texture set.
+    pub fn set_texture_channel(&mut self, channel: Channel, enabled: bool) {
+        if let Some(set) = self.project.active_set_mut() {
+            set.set_channel(channel, enabled);
+            self.bump_texture_sets();
+        }
+    }
+
+    /// Add a UDIM tile to the active texture set (no-op if present).
+    pub fn add_uv_tile(&mut self, tile: UvTile) {
+        if let Some(set) = self.project.active_set_mut()
+            && !set.uv_tiles.contains(&tile)
+        {
+            set.uv_tiles.push(tile);
+            set.uv_tiles.sort();
+            self.bump_texture_sets();
+        }
+    }
+
+    /// Remove a UDIM tile from the active texture set; at least one tile always remains.
+    pub fn remove_uv_tile(&mut self, tile: UvTile) {
+        if let Some(set) = self.project.active_set_mut()
+            && set.uv_tiles.len() > 1
+            && set.uv_tiles.contains(&tile)
+        {
+            set.uv_tiles.retain(|existing| *existing != tile);
+            self.bump_texture_sets();
+        }
     }
 
     /// The current environment map, if any.
@@ -182,5 +272,46 @@ mod tests {
         let before = session.revision();
         session.set_scene(Scene::default());
         assert_eq!(session.revision(), before + 1);
+    }
+
+    #[test]
+    fn a_new_session_has_one_texture_set() {
+        let session = Session::new("test");
+        assert_eq!(session.texture_sets().len(), 1);
+        assert_eq!(session.active_texture_set(), 0);
+    }
+
+    #[test]
+    fn selecting_out_of_range_fails_without_panicking() {
+        let mut session = Session::new("test");
+        assert!(!session.select_texture_set(99));
+        assert_eq!(session.active_texture_set(), 0);
+    }
+
+    #[test]
+    fn resolution_is_clamped() {
+        let mut session = Session::new("test");
+        session.set_texture_resolution(8);
+        assert_eq!(session.texture_sets()[0].resolution, 32);
+        session.set_texture_resolution(999_999);
+        assert_eq!(session.texture_sets()[0].resolution, 8192);
+    }
+
+    #[test]
+    fn channel_and_uv_tile_edits_bump_revision() {
+        let mut session = Session::new("test");
+        let before = session.texture_set_revision();
+        session.set_texture_channel(Channel::Emissive, true);
+        assert!(session.texture_sets()[0].has_channel(Channel::Emissive));
+        session.add_uv_tile(UvTile { u: 1, v: 0 });
+        assert!(session.texture_sets()[0].uv_tiles.contains(&UvTile { u: 1, v: 0 }));
+        assert!(session.texture_set_revision() > before);
+    }
+
+    #[test]
+    fn the_last_uv_tile_cannot_be_removed() {
+        let mut session = Session::new("test");
+        session.remove_uv_tile(UvTile::DEFAULT);
+        assert_eq!(session.texture_sets()[0].uv_tiles.len(), 1);
     }
 }

@@ -19,6 +19,7 @@ pub fn register_builtin(registry: &mut CommandRegistry) {
 fn register(registry: &mut CommandRegistry) -> Result<(), crate::command::CommandError> {
     crate::scene_cmds::register(registry)?;
     crate::viewport_cmds::register(registry)?;
+    crate::texture_set_cmds::register(registry)?;
     crate::ui_cmds::register(registry)?;
 
     registry.register(

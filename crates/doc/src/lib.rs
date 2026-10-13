@@ -8,6 +8,10 @@
 
 use substancecraft_geom::Mesh;
 
+pub mod project;
+
+pub use project::{Channel, Project, TextureSet, UvTile};
+
 /// A PBR material description. At M1 this is the flat metal/rough parameter set; it grows into
 /// the full channel/shader description in later milestones.
 #[derive(Clone, Debug, PartialEq)]
@@ -29,7 +33,7 @@ impl Default for Material {
 }
 
 /// The imported geometry and its materials: the canvas a project paints on.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Scene {
     /// The mesh (one combined mesh with per-material submeshes).
     pub mesh: Mesh,

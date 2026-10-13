@@ -9,6 +9,7 @@ use std::sync::Arc;
 use craft_settings::{Location, Settings, SettingsStore};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use substancecraft_doc::Channel;
 use substancecraft_engine::command::{CommandError, CommandOutcome, CommandRegistry};
 use substancecraft_engine::session::{SharedSession, lock};
 use substancecraft_render::Projection;
@@ -42,6 +43,8 @@ pub struct StudioApp {
     status: String,
     viewport: Viewport,
     pending_screenshot: Option<PathBuf>,
+    rename_buffer: String,
+    rename_index: usize,
 }
 
 impl StudioApp {
@@ -63,6 +66,8 @@ impl StudioApp {
             status: format!("SubstanceCraft {}", env!("CARGO_PKG_VERSION")),
             viewport: Viewport::default(),
             pending_screenshot: None,
+            rename_buffer: String::new(),
+            rename_index: usize::MAX,
         };
         app.report(app.dispatch("scene.load_default", &Value::Null));
         app
@@ -176,11 +181,85 @@ impl StudioApp {
         ui.add_space(4.0);
         ui.strong("Texture Sets");
         ui.separator();
-        let triangles = lock(&self.session).scene().mesh.triangle_count();
-        if triangles == 0 {
+
+        // Snapshot the project state so we never hold the lock while dispatching.
+        let (sets, active, resolution, channels, tiles, isolate) = {
+            let session = lock(&self.session);
+            let project = session.project();
+            let sets: Vec<(String, usize)> =
+                project.texture_sets.iter().enumerate().map(|(index, set)| (set.name.clone(), project.triangles_for_set(index))).collect();
+            let active = project.active_texture_set;
+            let (resolution, channels, tiles) = project
+                .active_set()
+                .map(|set| (set.resolution, set.channels.clone(), set.uv_tiles.clone()))
+                .unwrap_or((2048, Vec::new(), Vec::new()));
+            (sets, active, resolution, channels, tiles, session.settings().isolate_active_set)
+        };
+
+        if sets.is_empty() {
             ui.label(egui::RichText::new("No project loaded").color(Tokens::DARK.text_dim));
-        } else {
-            ui.label(format!("default ({triangles} tris)"));
+            return;
+        }
+
+        egui::ScrollArea::vertical().max_height(140.0).id_salt("sc.sets.list").show(ui, |ui| {
+            for (index, (name, triangles)) in sets.iter().enumerate() {
+                if ui.selectable_label(index == active, format!("{name}  ({triangles} tris)")).clicked() {
+                    self.report(self.dispatch("texture_set.select", &json!({ "index": index })));
+                }
+            }
+        });
+
+        ui.separator();
+        if self.rename_index != active {
+            self.rename_index = active;
+            self.rename_buffer = sets.get(active).map(|(name, _)| name.clone()).unwrap_or_default();
+        }
+        ui.horizontal(|ui| {
+            ui.label("Name");
+            let response = ui.add(egui::TextEdit::singleline(&mut self.rename_buffer).desired_width(f32::INFINITY));
+            if response.lost_focus() {
+                let name = self.rename_buffer.trim().to_string();
+                if !name.is_empty() {
+                    self.report(self.dispatch("texture_set.rename", &json!({ "name": name })));
+                }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("Res");
+            for value in [512u32, 1024, 2048, 4096] {
+                if ui.selectable_label(resolution == value, value.to_string()).clicked() {
+                    self.report(self.dispatch("texture_set.set_resolution", &json!({ "resolution": value })));
+                }
+            }
+        });
+
+        ui.add_space(2.0);
+        ui.label("Channels");
+        for channel in Channel::ALL {
+            let mut enabled = channels.contains(&channel);
+            if ui.checkbox(&mut enabled, channel.label()).changed() {
+                self.report(self.dispatch("texture_set.set_channel", &json!({ "channel": channel.id(), "enabled": enabled })));
+            }
+        }
+
+        ui.add_space(2.0);
+        ui.label("UV Tiles");
+        ui.horizontal_wrapped(|ui| {
+            for tile in &tiles {
+                if ui.small_button(format!("{} ×", tile.udim())).clicked() {
+                    self.report(self.dispatch("texture_set.remove_uv_tile", &json!({ "udim": tile.udim() })));
+                }
+            }
+            if ui.small_button("+ Tile").clicked() {
+                let next = tiles.iter().map(|tile| tile.udim()).max().unwrap_or(1001).saturating_add(1);
+                self.report(self.dispatch("texture_set.add_uv_tile", &json!({ "udim": next })));
+            }
+        });
+
+        let mut solo = isolate;
+        if ui.checkbox(&mut solo, "Solo active set").changed() {
+            self.report(self.dispatch("texture_set.set_solo", &json!({ "enabled": solo })));
         }
     }
 
