@@ -17,3 +17,6 @@ craft-atomic.workspace = true
 serde.workspace = true
 ron.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+substancecraft-geom.workspace = true

@@ -8,10 +8,12 @@
 
 pub use bytemuck;
 
+use serde::{Deserialize, Serialize};
+
 /// A linear, 32-bit float, RGBA image in row-major order.
 ///
 /// This is the compositor's working surface and the paint engine's backing store.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RasterImage {
     /// Width in pixels.
     pub width: u32,

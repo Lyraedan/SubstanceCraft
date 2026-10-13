@@ -4,12 +4,13 @@
 //! the stack bottom-to-top (the UI shows it top-first). A layer has a visibility flag, an opacity,
 //! a blend mode, an optional mask and a kind (fill / paint / effect / group).
 
+use serde::{Deserialize, Serialize};
 use substancecraft_raster::RasterImage;
 
 use crate::procedural::Effect;
 
 /// How a layer combines with the accumulated result beneath it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BlendMode {
     /// Replace the backdrop (weighted by coverage).
     #[default]
@@ -78,7 +79,7 @@ impl BlendMode {
 }
 
 /// A layer mask. For now only a constant coverage; painted masks arrive with the brush engine.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Mask {
     /// A constant coverage multiplier in `0..=1`.
     Constant(f32),
@@ -94,7 +95,7 @@ impl Mask {
 }
 
 /// The content of a layer.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum LayerKind {
     /// A constant fill: `color` for RGB channels, `value` for scalar channels.
     Fill {
@@ -133,7 +134,7 @@ impl LayerKind {
 }
 
 /// One layer in a stack.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
     /// Display name.
     pub name: String,
@@ -199,7 +200,7 @@ impl Layer {
 }
 
 /// An ordered stack of layers. Index `0` is the bottom.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct LayerStack {
     /// The layers, bottom-first.
     pub layers: Vec<Layer>,

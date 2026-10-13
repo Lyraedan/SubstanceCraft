@@ -15,10 +15,9 @@ normal, roughness, metalness, UV checker, wireframe); ground grid and sky/enviro
 wgpu viewport hosted in egui; offscreen snapshot plus live `ui.screenshot`; pinned CC0 assets via
 `cargo xtask assets`.
 
-**M9 — Workflow depth: partial.** Per-set shader selection (OpenPBR / Metal-Rough / Spec-Gloss) with
-editable metallic/roughness/specular/tint feeding the viewport, and post-effects (vignette + bloom) as
-a post-process pass. Anchors, layer instancing, physical size and distinct OpenPBR/spec-gloss shading
-remain (see `docs/gaps.md`). 74 commands.
+**M10 — Project lifecycle: complete.** The whole project serialises to a crash-safe, versioned
+`.sccraft` file (RON via `craft-atomic`); `file.new/open/save/save_as/info`, window title + dirty state,
+autosave every 60 s and `file.recover`. 81 commands.
 
 ## Milestones
 
@@ -34,7 +33,8 @@ remain (see `docs/gaps.md`). 74 commands.
 | **M7** | Baking | BVH mesh-map bakers, high-poly import, bake panel + log ✅ |
 | **M8** | Export | formats, presets, packing, naming, UDIM, round-trip ✅ |
 | **M9** | Workflow depth | per-set shaders + params, post-effects ◐ (anchors/instancing pending) |
-| M10 | Project lifecycle | `.sccraft` save/load, templates, autosave/recovery |
+| **M10** | Project lifecycle | `.sccraft` save/open/new, dirty state, autosave/recovery ✅ |
+| M11 | Automation | full command coverage, MCP, headless CLI, Rust scripting |
 | M3 | Layer stack | doc model, fill/mask/group/blend, CPU oracle + GPU compositor, undo |
 | M4 | Painting | brush engine, tablet pressure, projection painting |
 | M5 | Painting tools | projection, polyfill, smudge, clone, particle/physics brushes |

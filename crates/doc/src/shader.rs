@@ -3,8 +3,10 @@
 //! A texture set is shaded with one shader at a time. The shader name and its parameters live here;
 //! the viewport renderer reads them to shade the active set.
 
+use serde::{Deserialize, Serialize};
+
 /// The shading model assigned to a texture set.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Shader {
     /// OpenPBR surface (the default).
     #[default]
@@ -45,7 +47,7 @@ impl Shader {
 
 /// Editable shader parameters. These override the imported material for the active set's viewport
 /// shading.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ShaderParams {
     /// Base-colour tint (multiplied into the composited base colour).
     pub base_color_tint: [f32; 3],

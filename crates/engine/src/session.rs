@@ -1,5 +1,6 @@
 //! The editing session: the mutable state commands act on.
 
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use substancecraft_bake::{BakeMap, BakeSettings, Baker};
@@ -83,6 +84,10 @@ pub struct Session {
     bake_log: Vec<String>,
     /// Bumped when baked maps change.
     bake_revision: u64,
+    /// The path the project was last saved to or opened from.
+    file_path: Option<PathBuf>,
+    /// Whether there are unsaved document changes.
+    dirty: bool,
 }
 
 impl Default for Session {
@@ -120,6 +125,8 @@ impl Session {
             baked: Vec::new(),
             bake_log: Vec::new(),
             bake_revision: 1,
+            file_path: None,
+            dirty: false,
         }
     }
 
@@ -198,6 +205,7 @@ impl Session {
 
     fn bump_texture_sets(&mut self) {
         self.texture_set_revision = self.texture_set_revision.saturating_add(1);
+        self.dirty = true;
         self.touch();
     }
 
@@ -785,6 +793,77 @@ impl Session {
     pub fn save_baked(&self, map: BakeMap, path: &str) -> Result<(), String> {
         let image = self.baked_map(map).ok_or_else(|| format!("no baked {} map", map.id()))?;
         substancecraft_codecs::save_png(path, image.width, image.height, &image.to_rgba8_linear()).map_err(|err| err.to_string())
+    }
+
+    /// The path the project was last saved to or opened from.
+    pub fn file_path(&self) -> Option<&Path> {
+        self.file_path.as_deref()
+    }
+
+    /// Whether there are unsaved document changes.
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    /// Mark the document dirty (autosave saves without clearing the flag).
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
+    /// Write a copy of the project to `path` without changing the current file path or dirty flag.
+    pub fn write_copy(&self, path: &Path) -> Result<(), String> {
+        substancecraft_format::save(&self.project, path).map_err(|err| err.to_string())
+    }
+
+    /// The window title: filename with a leading `*` when there are unsaved changes.
+    pub fn project_title(&self) -> String {
+        let name = self.file_path.as_ref().and_then(|path| path.file_name()).and_then(|name| name.to_str()).unwrap_or("untitled");
+        if self.dirty { format!("* {name}") } else { name.to_string() }
+    }
+
+    /// Save to `path` (or the current file when `None`).
+    pub fn save(&mut self, path: Option<PathBuf>) -> Result<(), String> {
+        let target = match path {
+            Some(path) => path,
+            None => self.file_path.clone().ok_or_else(|| "no file path; use Save As".to_string())?,
+        };
+        substancecraft_format::save(&self.project, &target).map_err(|err| err.to_string())?;
+        self.file_path = Some(target.clone());
+        self.dirty = false;
+        self.set_status(format!("saved {}", target.display()));
+        Ok(())
+    }
+
+    /// Open a project from `path`, replacing the current one.
+    pub fn open(&mut self, path: &Path) -> Result<(), String> {
+        let project = substancecraft_format::load(path).map_err(|err| err.to_string())?;
+        self.project = project;
+        self.high_poly = None;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.baked.clear();
+        self.bake_log.clear();
+        self.scene_revision = self.scene_revision.saturating_add(1);
+        self.bump_texture_sets();
+        self.file_path = Some(path.to_path_buf());
+        self.dirty = false;
+        self.set_status(format!("opened {}", path.display()));
+        Ok(())
+    }
+
+    /// Start a new, empty project.
+    pub fn new_project(&mut self) {
+        self.project = Project::new("untitled");
+        self.high_poly = None;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.baked.clear();
+        self.bake_log.clear();
+        self.scene_revision = self.scene_revision.saturating_add(1);
+        self.bump_texture_sets();
+        self.file_path = None;
+        self.dirty = false;
+        self.set_status("new project");
     }
 }
 

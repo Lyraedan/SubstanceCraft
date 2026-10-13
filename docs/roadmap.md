@@ -4,26 +4,27 @@ Milestones and the current focus. The one-page summary is `ROADMAP.md`.
 
 ## Current focus
 
-**M10 — Project lifecycle.**
+**M11 — Automation.**
 
-M9 is partially complete (per-set shaders + params, post-effects; anchors/instancing/physical-size
-deferred). M10 adds the native project format:
+M10 is complete (native `.sccraft` project format, save/open/new, autosave/recovery). M11 makes the
+whole app agent-drivable end to end:
 
-1. `substancecraft-format`: serialise the whole `Project` (scene, texture sets, layer stacks, shader,
-   paint images) to a crash-safe `.sccraft` file via `craft-atomic`.
-2. Save / open / save-as commands; the app title and dirty state follow the file.
-3. Project templates and a New Project window.
-4. Autosave and recovery of a damaged/partial file.
+1. Finish command coverage so every user-visible action is a command with an id, menu path and tests.
+2. A JSON control-protocol server shared with the live UI session (currently the app server and the
+   UI both hold the session; expose viewport/scene introspection).
+3. An MCP server exposing the command registry as tools.
+4. The headless CLI: open a project, run commands, bake, export, screenshot.
+5. Optional Rust scripting over the command API.
 
 See `docs/gaps.md` for the ranked work list.
 
-## M9 deliverables (reference) — partial
+## M10 deliverables (reference) — done
 
-1. `doc`: `Shader`, `ShaderParams` on `TextureSet`. ✅
-2. `engine`: `texture_set.set_shader`, `shader.set`, `viewport.set_vignette/bloom`. ✅
-3. `render`: material override (per-set shader params) + a post-effects pass (vignette + bloom). ✅
-4. `ui`: shader combo + params; Post sliders. ✅
-5. Anchors, layer instancing, physical size, distinct shading models. ⏳
+1. `format`: versioned `.sccraft` RON, `craft-atomic` writes, `save`/`load`/`to_bytes`/`from_bytes`. ✅
+2. serde across `geom`/`raster`/`doc` (glam serde). ✅
+3. `engine`: path + dirty state, `save`/`open`/`new_project`/`write_copy`; `project_cmds`. ✅
+4. `ui`: File buttons, window title + dirty, autosave timer. ✅
+5. Round-trip, version-rejection and autosave/recover tests. ✅
 
 Acceptance: `cargo run -p substancecraft` opens the window, imports a sample glTF/OBJ, orbits with a
 real camera, PBR-shades it with IBL and tone mapping, switches display modes — all via commands; the

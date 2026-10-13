@@ -6,6 +6,7 @@
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+use serde::{Deserialize, Serialize};
 use substancecraft_geom::Mesh;
 
 pub mod layers;
@@ -20,7 +21,7 @@ pub use shader::{Shader, ShaderParams};
 
 /// A PBR material description. At M1 this is the flat metal/rough parameter set; it grows into
 /// the full channel/shader description in later milestones.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Material {
     /// The material name from the source file.
     pub name: String,
@@ -39,7 +40,7 @@ impl Default for Material {
 }
 
 /// The imported geometry and its materials: the canvas a project paints on.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Scene {
     /// The mesh (one combined mesh with per-material submeshes).
     pub mesh: Mesh,

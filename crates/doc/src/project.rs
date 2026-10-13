@@ -6,6 +6,7 @@
 
 use std::collections::BTreeSet;
 
+use serde::{Deserialize, Serialize};
 use substancecraft_geom::Mesh;
 
 use crate::Scene;
@@ -17,7 +18,7 @@ pub const DEFAULT_RESOLUTION: u32 = 2048;
 
 /// A surface channel a texture set can hold. The set mirrors the OpenPBR channel family; the
 /// metal/rough workflow is the default.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Channel {
     /// Linear base colour (albedo).
     BaseColor,
@@ -78,7 +79,7 @@ impl Channel {
 }
 
 /// A UDIM tile coordinate. Tile `(0, 0)` is UV `0..1`; UDIM `1001 + u + 10·v`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct UvTile {
     /// Tile column.
     pub u: u32,
@@ -110,7 +111,7 @@ impl UvTile {
 }
 
 /// A texture set: one paintable material configuration.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TextureSet {
     /// Display name (also used at export).
     pub name: String,
@@ -173,7 +174,7 @@ impl TextureSet {
 }
 
 /// The open project: a scene and its texture sets.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     /// Project name.
     pub name: String,

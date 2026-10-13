@@ -4,21 +4,31 @@ Where SubstanceCraft stands against Adobe Substance 3D Painter, dimension by dim
 lines carry the date; update the dimension when your work moves it. SubstanceCraft is a clean-room
 reimplementation: parity means comparable behaviour and results, never copied code or assets.
 
-_Last reviewed: 2026-10-13 (M9 complete)._
+_Last reviewed: 2026-10-13 (M10 complete)._
 
 | Dimension | Weight | Status | Notes |
 |---|---|---|---|
-| Project & texture-set workflow | high | 35% | Split by material, list/select/rename, per-set resolution + channels + UV tiles, solo (M2). |
+| Project & texture-set workflow | high | 40% | Split by material, list/select/rename, per-set resolution + channels + UV tiles, solo, save/open (M2, M10). |
 | Layer stack & blending | high | 45% | Fill/group layers, masks, 8 blend modes, opacity, visibility, undo/redo; CPU + GPU compositor (M3). |
 | Painting engine | high | 62% | Brush/eraser/smudge/clone/polyfill, screen-space sizing, symmetry, jitter, active-layer target, live composited result (M4–M5). |
 | Procedural content (generators/filters/smart materials) | high | 40% | Perlin/Simplex/Voronoi/White generators, levels/blur/invert/contrast/brightness filters, effect layers, shelf (M6). |
 | Baking (mesh maps + cage) | high | 50% | BVH-accelerated bakers: position, world/tangent normal, AO, thickness, curvature, material ID; high-poly import; save to PNG (M7). |
 | Export (presets, channels, UDIM, OpenPBR) | high | 55% | Channel export (PNG 8/16, TGA, EXR), presets, packing, naming templates, UDIM naming, round-trip (M8). |
 | Viewport & PBR preview | medium | 90% | Import, camera, PBR, HDRI IBL, tone mapping, display modes, grid, wireframe, composited base colour, post-effects, snapshot. |
-| Shaders (OpenPBR / ASM) | medium | 35% | Per-set shader selection, editable params (metallic/roughness/specular/tint) feeding the viewport, post-effects (M9). |
-| Automation & scripting | medium | 35% | 74 commands; control channel drives viewport, texture sets, layers, brushes, tools, paint, effects, baking, export and shaders. |
-| Native project format | medium | 0% | M10. |
+| Shaders (OpenPBR / ASM) | medium | 35% | Per-set shader selection, editable params, post-effects (M9). |
+| Automation & scripting | medium | 35% | 81 commands; control channel drives viewport, texture sets, layers, brushes, tools, paint, effects, baking, export, shaders and projects. |
+| Native project format | medium | 55% | `.sccraft` (RON via `craft-atomic`), versioned, save/open/save-as/new, title + dirty, autosave/recovery (M10). |
 | Performance | medium | n/a | No measurements yet. |
+
+## Project lifecycle (M10) — complete
+
+- [x] Serialise the whole `Project` (scene, texture sets, layer stacks, shader, paint images) to `.sccraft`.
+- [x] Crash-safe atomic writes (`craft-atomic`) with a version header.
+- [x] `file.new` / `file.open` / `file.save` / `file.save_as` / `file.info`; window title + dirty state.
+- [x] Autosave every 60 s while dirty, and `file.recover`.
+- [ ] Binary container for paint images (RON text is large).
+- [ ] Project templates and a New Project window.
+- [ ] A crash-recovery prompt on startup; environment/high-poly/baked maps are not saved.
 
 ## Workflow depth (M9) — partial
 

@@ -5,6 +5,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use craft_settings::{Location, Settings, SettingsStore};
 use serde::{Deserialize, Serialize};
@@ -81,6 +82,8 @@ pub struct StudioApp {
     layer_preview: Option<(u64, egui::TextureHandle)>,
     bake_preview: Option<(u64, egui::TextureHandle)>,
     tool: ViewportTool,
+    window_title: String,
+    last_autosave: Instant,
 }
 
 impl StudioApp {
@@ -108,6 +111,8 @@ impl StudioApp {
             layer_preview: None,
             bake_preview: None,
             tool: ViewportTool::default(),
+            window_title: String::new(),
+            last_autosave: Instant::now(),
         };
         app.report(app.dispatch("scene.load_default", &Value::Null));
         app
@@ -138,6 +143,25 @@ impl StudioApp {
     fn toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.heading("SubstanceCraft");
+            ui.separator();
+
+            if ui.button("New").clicked() {
+                self.report(self.dispatch("file.new", &Value::Null));
+            }
+            if ui.button("Open…").clicked()
+                && let Some(path) = rfd::FileDialog::new().add_filter("SubstanceCraft project", &["sccraft"]).pick_file()
+            {
+                self.report(self.dispatch("file.open", &json!({ "path": path.to_string_lossy() })));
+            }
+            if ui.button("Save").clicked() {
+                self.report(self.dispatch("file.save", &Value::Null));
+            }
+            if ui.button("Save As…").clicked()
+                && let Some(path) =
+                    rfd::FileDialog::new().add_filter("SubstanceCraft project", &["sccraft"]).set_file_name("untitled.sccraft").save_file()
+            {
+                self.report(self.dispatch("file.save_as", &json!({ "path": path.to_string_lossy() })));
+            }
             ui.separator();
 
             if ui.selectable_label(self.tool == ViewportTool::Paint, "Paint").clicked() {
@@ -780,6 +804,25 @@ impl eframe::App for StudioApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let _ = self.prefs.tick(std::time::Instant::now());
         self.handle_screenshots(ctx);
+
+        // Keep the window title in sync with the project path and dirty state.
+        let title = {
+            let session = lock(&self.session);
+            format!("SubstanceCraft — {}", session.project_title())
+        };
+        if title != self.window_title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.window_title = title;
+        }
+
+        // Autosave periodically while there are unsaved changes.
+        if self.last_autosave.elapsed() >= Duration::from_secs(60) {
+            self.last_autosave = Instant::now();
+            if lock(&self.session).is_dirty() {
+                let _ = self.dispatch("file.autosave", &Value::Null);
+            }
+        }
+
         craft_quit::on_close_request(ctx);
         // Poll session state so control-channel-driven changes appear without user input.
         ctx.request_repaint_after(std::time::Duration::from_millis(200));

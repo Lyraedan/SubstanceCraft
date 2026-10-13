@@ -54,7 +54,7 @@ winit = "0.30"
 rfd = "0.17"
 
 # Foundation.
-glam = { version = "0.34", features = ["bytemuck"] }
+glam = { version = "0.34", features = ["bytemuck", "serde"] }
 bytemuck = { version = "1", features = ["derive"] }
 half = "2"
 

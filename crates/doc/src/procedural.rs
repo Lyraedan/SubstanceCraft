@@ -4,8 +4,10 @@
 //! `substancecraft-material`; keeping the data here lets the layer model describe an effect without
 //! depending on the imaging code.
 
+use serde::{Deserialize, Serialize};
+
 /// A procedural texture generator.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Generator {
     /// Fractal gradient (Perlin) noise.
     Perlin {
@@ -96,7 +98,7 @@ impl Generator {
 }
 
 /// A filter applied to the pixels below it.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Filter {
     /// Input/output level remap with gamma.
     Levels {
@@ -190,7 +192,7 @@ impl Filter {
 }
 
 /// An effect: either a generator (fills) or a filter (transforms the pixels below).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Effect {
     /// A generated texture.
     Generator(Generator),

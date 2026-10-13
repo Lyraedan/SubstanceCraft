@@ -1653,6 +1653,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc148d4ddd3930c52f9e5ae79b89805c6f07e9ff417e7b083e0348cea60a5aba"
 dependencies = [
  "bytemuck",
+ "serde_core",
 ]
 
 [[package]]
@@ -4024,6 +4025,7 @@ dependencies = [
  "ron",
  "serde",
  "substancecraft-doc",
+ "substancecraft-geom",
  "thiserror 2.0.21",
 ]
 
@@ -4032,6 +4034,7 @@ name = "substancecraft-geom"
 version = "0.1.0"
 dependencies = [
  "glam",
+ "serde",
  "thiserror 2.0.21",
 ]
 
@@ -4088,6 +4091,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "half",
+ "serde",
  "thiserror 2.0.21",
 ]
 

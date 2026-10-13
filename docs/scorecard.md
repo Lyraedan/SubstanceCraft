@@ -4,7 +4,7 @@ Measured numbers, not estimates. Generated targets (`scorecard/*.toml`, `perf/bu
 `cargo xtask scorecard` task arrive with the performance milestone (M12). Until then this file is
 maintained by hand.
 
-_Last measured: 2026-10-13 (M9)._
+_Last measured: 2026-10-13 (M10)._
 
 ## Workspace
 
@@ -12,11 +12,11 @@ _Last measured: 2026-10-13 (M9)._
 |---|---|
 | Crates | 18 |
 | Apps | 2 |
-| Registered commands | 74 |
-| Rust files / lines | 59 / ~11.9k |
+| Registered commands | 81 |
+| Rust files / lines | 60 / ~12.3k |
 | `cargo xtask ci` | green |
 
-## Compositor / painting / content / baking / export / shaders
+## Compositor / painting / content / baking / export / shaders / projects
 
 | Check | Result |
 |---|---|
@@ -26,7 +26,8 @@ _Last measured: 2026-10-13 (M9)._
 | Projection paint → composite → viewport base colour | verified |
 | Bake 7 maps at 256², 16 AO samples (release) | 0.43 s |
 | Export channel round-trip (PNG) | within 1/255 |
-| Per-set shader params + vignette/bloom | verified (`Build/m9_shader.png`) |
+| `.sccraft` round-trip (bytes + file), version rejection | verified |
+| Save demo project (16k-tri torus) | 0.07 s, 3.1 MB RON |
 
 ## Performance budgets
 

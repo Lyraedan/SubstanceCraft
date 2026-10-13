@@ -1,13 +1,14 @@
 //! An indexed triangle mesh with PBR-ready attributes.
 
 use glam::{Vec2, Vec3, Vec4};
+use serde::{Deserialize, Serialize};
 
 use crate::GeometryError;
 use crate::bounds::Bounds;
 use crate::tangents;
 
 /// A contiguous run of indices sharing one material.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Submesh {
     /// Index into the parent scene's material list.
     pub material: u32,
@@ -19,7 +20,7 @@ pub struct Submesh {
 
 /// An indexed triangle mesh. All per-vertex arrays are parallel: index `i` names the same vertex
 /// in `positions`, `normals`, `uvs` and `tangents`.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Mesh {
     /// Vertex positions, object space.
     pub positions: Vec<Vec3>,
