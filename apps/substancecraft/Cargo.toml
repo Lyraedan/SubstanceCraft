@@ -1,0 +1,25 @@
+[package]
+name = "substancecraft"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+description = "The SubstanceCraft desktop application."
+default-run = "substancecraft"
+
+[[bin]]
+name = "substancecraft"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-engine.workspace = true
+substancecraft-ui.workspace = true
+substancecraft-automation.workspace = true
+eframe.workspace = true
+egui.workspace = true

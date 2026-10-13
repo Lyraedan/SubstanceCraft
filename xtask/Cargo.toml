@@ -1,0 +1,13 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+description = "Workspace tasks: layering, CI, build packaging and stats."
+
+[dependencies]
+serde_json.workspace = true

@@ -1,0 +1,19 @@
+[package]
+name = "substancecraft-gpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "wgpu layer-stack compositor, paint targets and channel packing."
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-doc.workspace = true
+substancecraft-raster.workspace = true
+bytemuck.workspace = true
+wgpu.workspace = true
+thiserror.workspace = true

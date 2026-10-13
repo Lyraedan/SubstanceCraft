@@ -1,0 +1,24 @@
+[package]
+name = "substancecraft-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Session and command registry: every user-visible action is a command."
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-doc.workspace = true
+substancecraft-format.workspace = true
+substancecraft-render.workspace = true
+substancecraft-io.workspace = true
+substancecraft-paint.workspace = true
+substancecraft-bake.workspace = true
+substancecraft-material.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

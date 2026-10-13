@@ -1,0 +1,16 @@
+[package]
+name = "substancecraft-geom"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Geometry foundation: meshes, tangent spaces, bounds and spatial acceleration."
+
+[lints]
+workspace = true
+
+[dependencies]
+glam.workspace = true
+thiserror.workspace = true

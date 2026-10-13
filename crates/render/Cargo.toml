@@ -1,0 +1,27 @@
+[package]
+name = "substancecraft-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Viewport PBR renderer: IBL, display channels, wireframe and post-effects."
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-geom.workspace = true
+substancecraft-doc.workspace = true
+substancecraft-raster.workspace = true
+substancecraft-color.workspace = true
+substancecraft-gpu.workspace = true
+glam.workspace = true
+bytemuck.workspace = true
+wgpu.workspace = true
+pollster.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+image.workspace = true

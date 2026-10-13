@@ -1,0 +1,200 @@
+//! The eframe application shell.
+//!
+//! Thin by rule: it renders state and dispatches commands by id. It does not implement
+//! document behaviour. Window close is routed through `craft-quit` so macOS exits cleanly.
+
+use std::sync::Arc;
+
+use craft_settings::{Location, Settings, SettingsStore};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use substancecraft_engine::command::{CommandError, CommandOutcome, CommandRegistry};
+use substancecraft_engine::session::{SharedSession, lock};
+
+use crate::state::UiState;
+use crate::theme::Tokens;
+use crate::viewport::Viewport;
+
+/// Everything the shell persists between runs.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Prefs {
+    /// View state (theme, panel visibility).
+    pub ui: UiState,
+}
+
+impl Settings for Prefs {
+    const APP_ID: &'static str = "substancecraft";
+    const SCHEMA_VERSION: u32 = 1;
+}
+
+/// The display-mode buttons in the toolbar, as `(display id, label)`.
+const DISPLAY_MODES: &[(&str, &str)] =
+    &[("base_color", "Base"), ("normal", "Normal"), ("roughness", "Rough"), ("metalness", "Metal"), ("uv_checker", "UV")];
+
+/// The main application.
+pub struct StudioApp {
+    registry: Arc<CommandRegistry>,
+    session: SharedSession,
+    prefs: SettingsStore<Prefs>,
+    status: String,
+    viewport: Viewport,
+}
+
+impl StudioApp {
+    /// Build the app for eframe, installing the theme and app menu.
+    pub fn new(cc: &eframe::CreationContext<'_>, registry: Arc<CommandRegistry>, session: SharedSession) -> Self {
+        Tokens::DARK.apply(&cc.egui_ctx);
+
+        if let Err(err) = craft_quit::install_app_menu(&cc.egui_ctx, "SubstanceCraft") {
+            eprintln!("warning: could not install the macOS application menu: {err}");
+        }
+
+        let (prefs, _report) = SettingsStore::<Prefs>::open(Location::Auto);
+
+        // Show something in the viewport immediately, through the command path.
+        let mut app =
+            Self { registry, session, prefs, status: format!("SubstanceCraft {}", env!("CARGO_PKG_VERSION")), viewport: Viewport::default() };
+        app.report(app.dispatch("scene.load_default", &Value::Null));
+        app
+    }
+
+    /// Dispatch a command by id against the shared session.
+    fn dispatch(&self, id: &str, params: &Value) -> Result<CommandOutcome, CommandError> {
+        let mut session = lock(&self.session);
+        self.registry.run(id, &mut session, params)
+    }
+
+    /// Fold a command result into the status line.
+    fn report(&mut self, result: Result<CommandOutcome, CommandError>) {
+        self.status = match result {
+            Ok(outcome) => outcome.message.unwrap_or_else(|| "done".to_string()),
+            Err(err) => err.to_string(),
+        };
+    }
+
+    fn ui_state(&self) -> UiState {
+        self.prefs.get().ui.clone()
+    }
+
+    fn current_display_mode(&self) -> &'static str {
+        lock(&self.session).settings().display.id()
+    }
+
+    fn toolbar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.heading("SubstanceCraft");
+            ui.separator();
+
+            if ui.button("Load Demo").clicked() {
+                self.report(self.dispatch("scene.load_default", &Value::Null));
+            }
+            if ui.button("Import Mesh…").clicked()
+                && let Some(path) = rfd::FileDialog::new().add_filter("3D meshes", &["obj", "gltf", "glb"]).pick_file()
+            {
+                self.report(self.dispatch("file.import_mesh", &json!({ "path": path.to_string_lossy() })));
+            }
+            if ui.button("Frame").clicked() {
+                self.report(self.dispatch("viewport.frame_all", &Value::Null));
+            }
+
+            ui.separator();
+            let current = self.current_display_mode();
+            for (id, label) in DISPLAY_MODES {
+                if ui.selectable_label(current == *id, *label).clicked() {
+                    self.report(self.dispatch("viewport.set_display_mode", &json!({ "mode": id })));
+                }
+            }
+
+            ui.separator();
+            if ui.button("About").clicked() {
+                self.report(self.dispatch("app.version", &Value::Null));
+            }
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let mut show_sets = self.ui_state().show_texture_sets;
+                let mut show_layers = self.ui_state().show_layer_stack;
+                let mut show_shelf = self.ui_state().show_shelf;
+                let changed = ui.toggle_value(&mut show_shelf, "Shelf").changed()
+                    | ui.toggle_value(&mut show_layers, "Layers").changed()
+                    | ui.toggle_value(&mut show_sets, "Sets").changed();
+                if changed {
+                    self.prefs.update(|prefs| {
+                        prefs.ui.show_texture_sets = show_sets;
+                        prefs.ui.show_layer_stack = show_layers;
+                        prefs.ui.show_shelf = show_shelf;
+                    });
+                }
+            });
+        });
+    }
+
+    fn texture_sets_panel(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(4.0);
+        ui.strong("Texture Sets");
+        ui.separator();
+        let triangles = lock(&self.session).scene().mesh.triangle_count();
+        if triangles == 0 {
+            ui.label(egui::RichText::new("No project loaded").color(Tokens::DARK.text_dim));
+        } else {
+            ui.label(format!("default ({triangles} tris)"));
+        }
+    }
+
+    fn shelf_panel(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(4.0);
+        ui.strong("Shelf");
+        ui.separator();
+        ui.label(egui::RichText::new("Materials and brushes arrive in M6").color(Tokens::DARK.text_dim));
+    }
+
+    fn layer_stack_panel(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.strong("Layer Stack");
+            ui.separator();
+            ui.label(egui::RichText::new("M3").color(Tokens::DARK.text_dim));
+        });
+        ui.separator();
+        ui.label(egui::RichText::new("Fill / paint / effect layers land here").color(Tokens::DARK.text_dim));
+    }
+
+    fn status_bar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(&self.status).color(Tokens::DARK.text_dim));
+        });
+    }
+}
+
+impl eframe::App for StudioApp {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        let c = Tokens::DARK.window_bg;
+        [c.r() as f32 / 255.0, c.g() as f32 / 255.0, c.b() as f32 / 255.0, 1.0]
+    }
+
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let _ = self.prefs.tick(std::time::Instant::now());
+        craft_quit::on_close_request(ctx);
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        egui::Panel::top("sc.top").show(ui, |ui| self.toolbar(ui));
+        egui::Panel::bottom("sc.status").show(ui, |ui| self.status_bar(ui));
+
+        if self.ui_state().show_texture_sets {
+            egui::Panel::left("sc.sets").default_size(200.0).min_size(150.0).resizable(true).show(ui, |ui| self.texture_sets_panel(ui));
+        }
+        if self.ui_state().show_shelf {
+            egui::Panel::right("sc.shelf").default_size(230.0).min_size(160.0).resizable(true).show(ui, |ui| self.shelf_panel(ui));
+        }
+        if self.ui_state().show_layer_stack {
+            egui::Panel::bottom("sc.layers").default_size(200.0).min_size(120.0).resizable(true).show(ui, |ui| self.layer_stack_panel(ui));
+        }
+
+        egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| self.viewport.show(ui, frame, &self.session));
+    }
+
+    fn on_exit(&mut self) {
+        let _ = self.prefs.flush();
+    }
+}

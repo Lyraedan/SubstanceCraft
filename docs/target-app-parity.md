@@ -1,0 +1,43 @@
+# Target-app parity
+
+Where SubstanceCraft stands against Adobe Substance 3D Painter, dimension by dimension. Status
+lines carry the date; update the dimension when your work moves it. SubstanceCraft is a clean-room
+reimplementation: parity means comparable behaviour and results, never copied code or assets.
+
+_Last reviewed: 2026-10-13 (M1 core)._
+
+| Dimension | Weight | Status | Notes |
+|---|---|---|---|
+| Project & texture-set workflow | high | 0% | Not started; M2. |
+| Layer stack & blending | high | 0% | Not started; M3. |
+| Painting engine | high | 0% | Not started; M4–M5. |
+| Procedural content (generators/filters/smart materials) | high | 0% | Not started; M6. |
+| Baking (mesh maps + cage) | high | 0% | Not started; M7. |
+| Export (presets, channels, UDIM, OpenPBR) | high | 0% | Not started; M8. |
+| Viewport & PBR preview | medium | 45% | Import, camera, metal/rough PBR, tone mapping, display modes, offscreen snapshot (M1 core). |
+| Shaders (OpenPBR / ASM) | medium | 0% | M9. |
+| Automation & scripting | medium | 20% | 13 commands; JSON control channel drives the live viewport (M0–M1). |
+| Native project format | medium | 0% | M10. |
+| Performance | medium | n/a | No measurements yet. |
+
+## Viewport / PBR preview (M1)
+
+- [x] App window, theme, command registry, control channel (M0).
+- [x] Mesh import (glTF, OBJ) with tangents.
+- [x] Orbit/pan/dolly/focus camera.
+- [x] Metal/rough PBR shading.
+- [ ] Image-based lighting from an HDRI (hemisphere ambient + key light today).
+- [x] Tone mapping and exposure.
+- [x] Display modes (base colour, normal, roughness, metalness, UV checker).
+- [x] Offscreen snapshot + smoke test.
+
+## Automation
+
+- [x] Command registry with id/label/menu/params/enabled/run and tests (M0).
+- [x] JSON control channel: ping, list commands, dispatch, error as data (M0).
+- [x] Drives the live session (scene import, display mode, framing) (M1).
+- [ ] `ui.screenshot` (offscreen capture from the UI).
+- [ ] MCP server.
+
+See the per-dimension checklists: `viewport-parity.md`, `layerstack-parity.md`, `brush-parity.md`,
+`baking-parity.md`, `export-parity.md`.

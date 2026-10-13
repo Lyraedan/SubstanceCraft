@@ -1,0 +1,19 @@
+[package]
+name = "substancecraft-format"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "The native .sccraft project format: lossless, crash-safe serialization."
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-doc.workspace = true
+craft-atomic.workspace = true
+serde.workspace = true
+ron.workspace = true
+thiserror.workspace = true

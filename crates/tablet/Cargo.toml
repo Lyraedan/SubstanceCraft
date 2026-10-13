@@ -1,0 +1,12 @@
+[package]
+name = "substancecraft-tablet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Pen tablet input (pressure, tilt) for macOS, Windows and X11."
+
+[dependencies]
+thiserror.workspace = true

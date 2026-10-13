@@ -1,0 +1,16 @@
+[package]
+name = "substancecraft-color"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Colour management: transfer functions, tone mapping and working colour spaces."
+
+[lints]
+workspace = true
+
+[dependencies]
+glam.workspace = true
+thiserror.workspace = true

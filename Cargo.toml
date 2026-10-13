@@ -1,0 +1,95 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "apps/*", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.95"
+repository = "https://github.com/storytold/substancecraft"
+authors = ["The SubstanceCraft contributors"]
+
+[workspace.dependencies]
+# Internal crates. Layering is enforced by `cargo xtask layers`; see xtask/src/layers.rs.
+substancecraft-geom = { path = "crates/geom" }
+substancecraft-color = { path = "crates/color" }
+substancecraft-raster = { path = "crates/raster" }
+substancecraft-codecs = { path = "crates/codecs" }
+substancecraft-tablet = { path = "crates/tablet" }
+
+substancecraft-doc = { path = "crates/doc" }
+substancecraft-format = { path = "crates/format" }
+
+substancecraft-algo = { path = "crates/algo" }
+substancecraft-paint = { path = "crates/paint" }
+substancecraft-material = { path = "crates/material" }
+substancecraft-bake = { path = "crates/bake" }
+
+substancecraft-compose = { path = "crates/compose" }
+substancecraft-gpu = { path = "crates/gpu" }
+substancecraft-render = { path = "crates/render" }
+
+substancecraft-io = { path = "crates/io" }
+
+substancecraft-engine = { path = "crates/engine" }
+
+substancecraft-ui = { path = "crates/ui" }
+substancecraft-automation = { path = "crates/automation" }
+
+# Shared Craft libraries, pinned by immutable git revision.
+craft-atomic = { git = "https://github.com/storytold/craft-libs", rev = "666c358065261a2816b376fa3bb10538dbf53040" }
+craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "666c358065261a2816b376fa3bb10538dbf53040" }
+craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "666c358065261a2816b376fa3bb10538dbf53040" }
+craft-ui = { git = "https://github.com/storytold/craft-libs", rev = "666c358065261a2816b376fa3bb10538dbf53040" }
+
+# UI stack. egui/eframe/wgpu/winit versions must stay mutually compatible.
+egui = "0.36"
+eframe = { version = "0.36", features = ["persistence"] }
+egui-wgpu = "0.36"
+egui-winit = "0.36"
+egui_extras = "0.36"
+wgpu = "30"
+winit = "0.30"
+rfd = "0.17"
+
+# Foundation.
+glam = { version = "0.34", features = ["bytemuck"] }
+bytemuck = { version = "1", features = ["derive"] }
+half = "2"
+
+# Formats and codecs.
+image = "0.25"
+exr = "1.74"
+ktx2 = "0.5"
+gltf = "1.4"
+obj = "0.10"
+
+# Serialization, errors, diagnostics.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ron = "0.12"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Runtime helpers.
+rayon = "1.12"
+clap = { version = "4", features = ["derive"] }
+pollster = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+
+[profile.release]
+panic = "unwind"
+lto = "thin"
+codegen-units = 1
+
+[profile.dev.package."*"]
+opt-level = 2

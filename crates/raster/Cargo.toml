@@ -1,0 +1,17 @@
+[package]
+name = "substancecraft-raster"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Pixel formats, tile buffers, PBR channel math and blend modes."
+
+[lints]
+workspace = true
+
+[dependencies]
+bytemuck.workspace = true
+half.workspace = true
+thiserror.workspace = true

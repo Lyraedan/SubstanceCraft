@@ -1,0 +1,17 @@
+[package]
+name = "substancecraft-algo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Imaging algorithms: blur, levels, distance fields, curvature and normal-from-height."
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-raster.workspace = true
+rayon.workspace = true
+thiserror.workspace = true

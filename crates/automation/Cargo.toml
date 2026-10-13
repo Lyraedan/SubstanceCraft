@@ -1,0 +1,18 @@
+[package]
+name = "substancecraft-automation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "The JSON control channel: drive and inspect the running editor by command id."
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-engine.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

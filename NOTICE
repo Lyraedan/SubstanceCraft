@@ -1,0 +1,18 @@
+SubstanceCraft
+Copyright (c) 2026 The SubstanceCraft contributors.
+Licensed under the MIT License or the Apache License, Version 2.0, at your option
+(LICENSE-MIT, LICENSE-APACHE).
+
+Third-party material
+
+This product bundles third-party material under its own licenses, listed below. The per-file
+list (author, source, license) is in ATTRIBUTION.md.
+
+Linked libraries (not bundled):
+- craft-libs, https://github.com/storytold/craft-libs, revision
+  666c358065261a2816b376fa3bb10538dbf53040. Copyright (c) 2026 ArtCraft Team and the craft-libs
+  contributors. Licensed MIT OR Apache-2.0. Used as the shared Craft UI/settings/atomic/quit layer.
+
+Everything else in this repository is original to SubstanceCraft. No Adobe Substance 3D Painter
+code, shaders, profiles, icons or assets are used; SubstanceCraft is a clean-room reimplementation
+built from public specifications and observation.

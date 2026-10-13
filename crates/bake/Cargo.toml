@@ -1,0 +1,18 @@
+[package]
+name = "substancecraft-bake"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Mesh-map bakers: normal, ambient occlusion, curvature, position, thickness and ID."
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-geom.workspace = true
+substancecraft-raster.workspace = true
+rayon.workspace = true
+thiserror.workspace = true

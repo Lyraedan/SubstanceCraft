@@ -1,0 +1,18 @@
+[package]
+name = "substancecraft-doc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Document model: projects, texture sets, layer stacks, masks and channels (pure data)."
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-geom.workspace = true
+substancecraft-raster.workspace = true
+serde.workspace = true
+thiserror.workspace = true

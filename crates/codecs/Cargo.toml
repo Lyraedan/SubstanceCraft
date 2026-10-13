@@ -1,0 +1,18 @@
+[package]
+name = "substancecraft-codecs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Standalone image and texture codecs (PNG, TGA, JPEG, EXR, KTX2)."
+
+[lints]
+workspace = true
+
+[dependencies]
+image.workspace = true
+exr.workspace = true
+ktx2.workspace = true
+thiserror.workspace = true

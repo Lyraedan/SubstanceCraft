@@ -1,0 +1,17 @@
+[package]
+name = "substancecraft-material"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Procedural materials: noise and generators, filters, smart materials and masks."
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-raster.workspace = true
+substancecraft-algo.workspace = true
+thiserror.workspace = true

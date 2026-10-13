@@ -1,0 +1,26 @@
+# Cargo build cache
+/target
+**/target
+
+# Final built applications (produced by `cargo xtask build`); never committed.
+/Build
+
+# Cargo
+Cargo.lock.orig
+
+# Fetched/pinned test assets (never committed; see `cargo xtask assets`).
+/corpus
+
+# Local-only working notes
+/plan
+/log
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Project files produced while testing
+*.sccraft
+
+# Agent scratch target dirs
+target/agent-*

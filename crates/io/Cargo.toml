@@ -1,0 +1,21 @@
+[package]
+name = "substancecraft-io"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Import and export: glTF/OBJ meshes, textures and export presets."
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-geom.workspace = true
+substancecraft-doc.workspace = true
+substancecraft-codecs.workspace = true
+gltf.workspace = true
+obj.workspace = true
+image.workspace = true
+thiserror.workspace = true

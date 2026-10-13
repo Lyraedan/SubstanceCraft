@@ -1,0 +1,17 @@
+[package]
+name = "substancecraft-paint"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Brush engine: dabs, strokes, spacing, pressure curves, jitter and projection."
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-geom.workspace = true
+substancecraft-raster.workspace = true
+thiserror.workspace = true

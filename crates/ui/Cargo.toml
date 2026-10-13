@@ -1,0 +1,30 @@
+[package]
+name = "substancecraft-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "The egui/eframe shell: thin, data-driven views that dispatch commands."
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-doc.workspace = true
+substancecraft-geom.workspace = true
+substancecraft-render.workspace = true
+substancecraft-engine.workspace = true
+craft-ui.workspace = true
+craft-quit = { workspace = true, features = ["egui", "menu"] }
+craft-settings.workspace = true
+egui.workspace = true
+eframe.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rfd.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+image.workspace = true

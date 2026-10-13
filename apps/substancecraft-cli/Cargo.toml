@@ -1,0 +1,23 @@
+[package]
+name = "substancecraft-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+description = "Headless SubstanceCraft CLI: list and run commands, serve the control channel."
+
+[[bin]]
+name = "substancecraft-cli"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+substancecraft-engine.workspace = true
+substancecraft-automation.workspace = true
+serde_json.workspace = true
+clap.workspace = true
