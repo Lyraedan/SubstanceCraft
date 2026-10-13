@@ -6,7 +6,7 @@
 
 use serde_json::{Value, json};
 use substancecraft_bake::BakeMap;
-use substancecraft_doc::{BlendMode, Channel, Filter, Generator, LayerKind, Material, Shader, TextureSet};
+use substancecraft_doc::{BlendMode, Channel, Filter, Generator, LayerKind, Material, Shader, TextureSet, UvTile};
 use substancecraft_engine::session::lock;
 
 use crate::app::StudioApp;
@@ -47,23 +47,38 @@ fn layer_view(layer: &substancecraft_doc::Layer) -> LayerView {
     }
 }
 
+/// A flattened view of one texture set for the list tree.
+struct SetRow {
+    name: String,
+    resolution: u32,
+    shader: &'static str,
+    triangles: usize,
+    tiles: Vec<UvTile>,
+}
+
 impl StudioApp {
-    /// The right dock's top panel: the texture set list.
+    /// The right dock's top panel: the texture set tree.
     pub(crate) fn texture_set_list_panel(&mut self, ui: &mut egui::Ui) {
         ui.add_space(2.0);
-        ui.horizontal(|ui| {
-            ui.strong("Texture Set List");
-        });
+        ui.strong("Texture Set List");
         ui.separator();
 
-        let (sets, active, resolution, tiles, isolate) = {
+        let (sets, active, isolate) = {
             let session = lock(&self.session);
             let project = session.project();
-            let sets: Vec<(String, usize)> =
-                project.texture_sets.iter().enumerate().map(|(index, set)| (set.name.clone(), project.triangles_for_set(index))).collect();
-            let active = project.active_texture_set;
-            let (resolution, tiles) = project.active_set().map(|set| (set.resolution, set.uv_tiles.clone())).unwrap_or((2048, Vec::new()));
-            (sets, active, resolution, tiles, session.settings().isolate_active_set)
+            let sets: Vec<SetRow> = project
+                .texture_sets
+                .iter()
+                .enumerate()
+                .map(|(index, set)| SetRow {
+                    name: set.name.clone(),
+                    resolution: set.resolution,
+                    shader: set.shader.label(),
+                    triangles: project.triangles_for_set(index),
+                    tiles: set.uv_tiles.clone(),
+                })
+                .collect();
+            (sets, project.active_texture_set, session.settings().isolate_active_set)
         };
 
         if sets.is_empty() {
@@ -72,26 +87,72 @@ impl StudioApp {
         }
 
         let mut actions: Vec<(&'static str, Value)> = Vec::new();
-        egui::ScrollArea::vertical().max_height(140.0).id_salt("sc.sets.list").show(ui, |ui| {
-            for (index, (name, triangles)) in sets.iter().enumerate() {
-                if ui.selectable_label(index == active, format!("{name}  ({triangles} tris)")).clicked() {
-                    actions.push(("texture_set.select", json!({ "index": index })));
+        egui::ScrollArea::vertical().max_height(240.0).id_salt("sc.sets.tree").show(ui, |ui| {
+            for (index, row) in sets.iter().enumerate() {
+                let selected = index == active;
+                ui.horizontal(|ui| {
+                    if ui.selectable_label(selected, &row.name).clicked() {
+                        actions.push(("texture_set.select", json!({ "index": index })));
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(egui::RichText::new(format!("{}²", row.resolution)).color(Tokens::DARK.text_dim));
+                        ui.label(egui::RichText::new(row.shader).color(Tokens::DARK.text_dim));
+                    });
+                });
+                if selected {
+                    ui.indent(("sc.sets.tiles", index), |ui| {
+                        ui.label(
+                            egui::RichText::new(format!("UV Tiles ({})  ·  {} tris", row.tiles.len(), row.triangles)).color(Tokens::DARK.text_dim),
+                        );
+                        for tile in &row.tiles {
+                            ui.horizontal(|ui| {
+                                ui.label(tile.udim().to_string());
+                                ui.label(egui::RichText::new("No name").color(Tokens::DARK.text_dim));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(egui::RichText::new(format!("{}²", row.resolution)).color(Tokens::DARK.text_dim));
+                                });
+                            });
+                        }
+                    });
                 }
             }
         });
 
         ui.separator();
+        let mut solo = isolate;
+        if ui.checkbox(&mut solo, "Solo active set").changed() {
+            actions.push(("texture_set.set_solo", json!({ "enabled": solo })));
+        }
+
+        for (id, params) in actions {
+            let outcome = self.dispatch(id, &params);
+            self.report(outcome);
+        }
+    }
+
+    /// The right dock's `Texture Set Settings` tab: identity, resolution, channels, tiles, shader.
+    pub(crate) fn texture_set_settings_panel(&mut self, ui: &mut egui::Ui) {
+        let (active, name, resolution, channels, tiles, shader, params) = {
+            let session = lock(&self.session);
+            let project = session.project();
+            let Some(set) = project.active_set() else { return };
+            (project.active_texture_set, set.name.clone(), set.resolution, set.channels.clone(), set.uv_tiles.clone(), set.shader, set.shader_params)
+        };
+
+        let mut actions: Vec<(&'static str, Value)> = Vec::new();
+
+        ui.add_space(2.0);
         if self.rename_index != active {
             self.rename_index = active;
-            self.rename_buffer = sets.get(active).map(|(name, _)| name.clone()).unwrap_or_default();
+            self.rename_buffer = name;
         }
         ui.horizontal(|ui| {
             ui.label("Name");
             let response = ui.add(egui::TextEdit::singleline(&mut self.rename_buffer).desired_width(f32::INFINITY));
             if response.lost_focus() {
-                let name = self.rename_buffer.trim().to_string();
-                if !name.is_empty() {
-                    actions.push(("texture_set.rename", json!({ "name": name })));
+                let trimmed = self.rename_buffer.trim().to_string();
+                if !trimmed.is_empty() {
+                    actions.push(("texture_set.rename", json!({ "name": trimmed })));
                 }
             }
         });
@@ -105,7 +166,16 @@ impl StudioApp {
             }
         });
 
-        ui.add_space(2.0);
+        ui.add_space(4.0);
+        ui.label("Channels");
+        for channel in Channel::ALL {
+            let mut enabled = channels.contains(&channel);
+            if ui.checkbox(&mut enabled, channel.label()).changed() {
+                actions.push(("texture_set.set_channel", json!({ "channel": channel.id(), "enabled": enabled })));
+            }
+        }
+
+        ui.add_space(4.0);
         ui.label("UV Tiles");
         ui.horizontal_wrapped(|ui| {
             for tile in &tiles {
@@ -118,35 +188,6 @@ impl StudioApp {
                 actions.push(("texture_set.add_uv_tile", json!({ "udim": next })));
             }
         });
-
-        let mut solo = isolate;
-        if ui.checkbox(&mut solo, "Solo active set").changed() {
-            actions.push(("texture_set.set_solo", json!({ "enabled": solo })));
-        }
-
-        for (id, params) in actions {
-            let outcome = self.dispatch(id, &params);
-            self.report(outcome);
-        }
-    }
-
-    /// The right dock's `Texture Set Settings` tab: channels, resolution and shader.
-    pub(crate) fn texture_set_settings_panel(&mut self, ui: &mut egui::Ui) {
-        let (channels, shader, params) = {
-            let session = lock(&self.session);
-            session.project().active_set().map(|set| (set.channels.clone(), set.shader, set.shader_params)).unwrap_or_default()
-        };
-
-        let mut actions: Vec<(&'static str, Value)> = Vec::new();
-
-        ui.add_space(2.0);
-        ui.label("Channels");
-        for channel in Channel::ALL {
-            let mut enabled = channels.contains(&channel);
-            if ui.checkbox(&mut enabled, channel.label()).changed() {
-                actions.push(("texture_set.set_channel", json!({ "channel": channel.id(), "enabled": enabled })));
-            }
-        }
 
         ui.add_space(4.0);
         ui.separator();
@@ -332,12 +373,16 @@ impl StudioApp {
         }
     }
 
-    /// The right dock's bottom section: Properties (a composited preview and the active brush).
+    /// The right dock's bottom section: Properties — Paint (material + mask previews, brush).
     pub(crate) fn properties_panel(&mut self, ui: &mut egui::Ui) {
-        ui.strong("Properties");
+        ui.horizontal(|ui| {
+            ui.strong("Properties");
+            ui.separator();
+            ui.label(egui::RichText::new("Paint").color(Tokens::DARK.text_dim));
+        });
         ui.separator();
 
-        let (revision, set, material) = {
+        let (revision, set, material, mask) = {
             let session = lock(&self.session);
             let project = session.project();
             let set = project.active_set().cloned();
@@ -347,7 +392,12 @@ impl StudioApp {
                 .and_then(|id| project.scene.materials.get(*id as usize))
                 .cloned()
                 .unwrap_or_default();
-            (session.texture_set_revision(), set, material)
+            let mask = project.active_set().and_then(|set| {
+                let layers = &set.layers.layers;
+                let index = if self.active_layer < layers.len() { self.active_layer } else { layers.len().saturating_sub(1) };
+                layers.get(index).and_then(|layer| layer.mask.map(|mask| mask.coverage()))
+            });
+            (session.texture_set_revision(), set, material, mask)
         };
         if let Some(set) = &set {
             self.update_layer_preview(ui.ctx(), revision, set, &material);
@@ -362,9 +412,24 @@ impl StudioApp {
         let mut actions: Vec<(&'static str, Value)> = Vec::new();
 
         ui.horizontal(|ui| {
-            if let Some(handle) = &preview {
-                ui.add(egui::Image::new(handle).fit_to_exact_size(egui::vec2(72.0, 72.0)));
-            }
+            ui.vertical(|ui| {
+                match &preview {
+                    Some(handle) => {
+                        ui.add(egui::Image::new(handle).fit_to_exact_size(egui::vec2(72.0, 72.0)));
+                    }
+                    None => {
+                        ui.allocate_exact_size(egui::vec2(72.0, 72.0), egui::Sense::hover());
+                    }
+                }
+                ui.label(egui::RichText::new("Material").color(Tokens::DARK.text_dim));
+            });
+            ui.vertical(|ui| {
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(72.0, 72.0), egui::Sense::hover());
+                let gray = ((mask.unwrap_or(0.0).clamp(0.0, 1.0)) * 255.0) as u8;
+                ui.painter().rect_filled(rect, egui::CornerRadius::same(3), egui::Color32::from_gray(gray));
+                ui.painter().rect_stroke(rect, egui::CornerRadius::same(3), egui::Stroke::new(1.0, Tokens::DARK.border), egui::StrokeKind::Inside);
+                ui.label(egui::RichText::new(if mask.is_some() { "Mask" } else { "No mask" }).color(Tokens::DARK.text_dim));
+            });
             ui.vertical(|ui| {
                 ui.label(egui::RichText::new("Paint Brush").strong());
                 ui.horizontal(|ui| {
