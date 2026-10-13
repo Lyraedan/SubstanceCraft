@@ -2,6 +2,8 @@
 
 mod assets;
 mod layers;
+mod perf;
+mod scorecard;
 mod stats;
 
 use std::process::{Command, ExitCode};
@@ -16,6 +18,8 @@ fn main() -> ExitCode {
         "build" => build(args.collect()),
         "ci" => ci(),
         "assets" => assets::run(),
+        "perf" => perf::run(),
+        "scorecard" => scorecard::run(),
         "help" | "--help" | "-h" => {
             help();
             ExitCode::SUCCESS
@@ -35,6 +39,8 @@ fn help() {
     println!("  build          Build the release app and copy it into Build/.");
     println!("  ci             Run the full local gate: layers, fmt, clippy, test.");
     println!("  assets         Fetch pinned, permissively licensed test assets into corpus/.");
+    println!("  perf           Time representative operations and record perf/baseline.json.");
+    println!("  scorecard      Regenerate docs/scorecard.md from the tree and the perf baseline.");
 }
 
 /// Build release and copy the finished apps into `Build/`.

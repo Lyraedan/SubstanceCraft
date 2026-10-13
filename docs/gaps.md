@@ -2,19 +2,20 @@
 
 Every known shortfall, ranked. The work list to pick from. New entries go at the top of their tier.
 
-_Last reviewed: 2026-10-13 (M11 complete)._
+_Last reviewed: 2026-10-13 (M12 complete)._
+
+## Release (deferred)
+
+1. **No packaging/signing.** `cargo xtask build` copies the raw binaries into `Build/`; a signed
+   macOS `.app`, Windows installer and Linux tarball are not produced.
+2. **A single perf baseline** is recorded on the dev machine; budgets are not enforced in CI yet
+   (`enforce = false`).
 
 ## Automation polish (deferred from M11)
 
 1. **No typed Rust scripting layer** over the command API (only the JSON/Script/MCP surfaces).
 2. **MCP exposes tools only** — no resources or prompts.
 3. **The control channel does not stream events** (only request/response).
-
-## Performance / release (M12)
-
-4. **No perf harness** (`cargo xtask perf`, budgets) and **no packaging/signing**; `cargo xtask build`
-   only copies the raw binaries.
-5. **No measured scorecard**; the viewport re-renders every frame.
 
 ## Project-format polish
 

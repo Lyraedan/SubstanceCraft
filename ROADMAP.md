@@ -19,6 +19,11 @@ wgpu viewport hosted in egui; offscreen snapshot plus live `ui.screenshot`; pinn
 (now with `system.describe` and introspection commands `session.info` / `scene.info` /
 `viewport.state`), a **Model Context Protocol server** over stdio, and a headless CLI script runner.
 
+**M12 — Polish: engine complete, packaging deferred.** A performance harness (`cargo xtask perf`) with
+budgets and a recorded baseline, a generated scorecard (`cargo xtask scorecard`), and a viewport that
+re-composites only when something changes. Release packaging/signing is out of scope for now (see
+`docs/gaps.md`).
+
 ## Milestones
 
 | # | Milestone | Focus |
@@ -35,7 +40,7 @@ wgpu viewport hosted in egui; offscreen snapshot plus live `ui.screenshot`; pinn
 | **M9** | Workflow depth | per-set shaders + params, post-effects ◐ (anchors/instancing pending) |
 | **M10** | Project lifecycle | `.sccraft` save/open/new, dirty state, autosave/recovery ✅ |
 | **M11** | Automation | full commands, control channel, MCP server, CLI script runner ✅ |
-| M12 | Polish/release | perf budgets, scorecard, signed packages (macOS/Windows/Linux) |
+| **M12** | Polish | perf harness + budgets, scorecard, render-on-change ✅ (packaging deferred) |
 | M3 | Layer stack | doc model, fill/mask/group/blend, CPU oracle + GPU compositor, undo |
 | M4 | Painting | brush engine, tablet pressure, projection painting |
 | M5 | Painting tools | projection, polyfill, smudge, clone, particle/physics brushes |

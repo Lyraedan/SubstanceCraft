@@ -1,0 +1,11 @@
+# Performance budgets for `cargo xtask perf`.
+#
+# `enforce = true` makes `cargo xtask perf` fail when a scenario exceeds its budget
+# (include this in CI once the numbers are stable on the target hardware).
+
+enforce = false
+
+[budgets]
+compose_2k_ms = 2000
+bake_ao_256_ms = 2000
+project_roundtrip_ms = 1000

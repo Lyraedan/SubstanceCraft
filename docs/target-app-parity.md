@@ -18,7 +18,15 @@ _Last reviewed: 2026-10-13 (M11 complete)._
 | Shaders (OpenPBR / ASM) | medium | 35% | Per-set shader selection, editable params, post-effects (M9). |
 | Automation & scripting | medium | 70% | 85 commands; JSON control channel, **MCP server**, headless CLI script runner, introspection (M0–M11). |
 | Native project format | medium | 55% | `.sccraft` (RON via `craft-atomic`), versioned, save/open/save-as/new, title + dirty, autosave/recovery (M10). |
-| Performance | medium | n/a | No measurements yet. |
+| Performance | medium | 30% | `cargo xtask perf` + budgets + baseline; viewport re-composites only on change (M12). No release packaging. |
+
+## Polish (M12) — engine complete, packaging deferred
+
+- [x] `cargo xtask perf` with budgets (`perf/budgets.toml`) and a recorded baseline (`perf/baseline.json`).
+- [x] `cargo xtask scorecard` generating `docs/scorecard.md`.
+- [x] Viewport re-composites only when the scene/camera/settings/size signature changes.
+- [ ] Release packaging and signing (macOS/Windows/Linux).
+- [ ] GPU compositor for full layer stacks; further hot-path profiling.
 
 ## Automation (M11) — complete
 

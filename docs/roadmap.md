@@ -4,26 +4,27 @@ Milestones and the current focus. The one-page summary is `ROADMAP.md`.
 
 ## Current focus
 
-**M12 — Polish / release.**
+**Post-M12 backlog.**
 
-M11 is complete (control channel, MCP server, headless CLI). M12 prepares a release:
+All twelve milestones have landed (M9 and M12 in part). The engine is complete enough to paint,
+bake and export; the remaining work is polish, depth and release:
 
-1. A performance harness (`cargo xtask perf`) with budgets and recorded baselines; make the viewport
-   render on revision change rather than every frame.
-2. A generated scorecard (`cargo xtask scorecard`) with measured numbers.
-3. Packaging: `cargo xtask build` producing a macOS `.app`, a Windows installer and a Linux tarball,
-   codesigned for distribution.
-4. Final parity sweep across `docs/*-parity.md` and the gap list.
+1. **Release/packaging** — signed macOS `.app`, Windows installer, Linux tarball; `docs/releasing.md`.
+2. **Workflow depth** — distinct OpenPBR/spec-gloss shading models, anchors, layer instancing,
+   physical size.
+3. **Painting depth** — native pen pressure/tilt, physics brushes, GPU/streamed painting, UDIM-aware
+   painting, active-layer eraser.
+4. **Content** — smart materials/masks, a grunge library, editable filter/generator parameters.
+5. **Performance** — GPU compositor for full stacks, BVH everywhere, a binary project container.
 
-See `docs/gaps.md` for the ranked work list.
+See `docs/gaps.md` for the ranked work list and `perf/budgets.toml` for the enforced budgets.
 
-## M11 deliverables (reference) — done
+## M12 deliverables (reference) — done (engine)
 
-1. `automation::mcp`: MCP over stdio (`initialize`/`tools/list`/`tools/call`). ✅
-2. `automation::server`: shared `run_stream` + `system.describe`. ✅
-3. `engine::info_cmds`: `session.info`, `scene.info`, `viewport.state`, `app.capabilities`. ✅
-4. `substancecraft-cli`: `script <file>` and `mcp` subcommands. ✅
-5. `docs/control-protocol.md` covers the channel, MCP and scripting. ✅
+1. `cargo xtask perf` — times compose/bake/project round-trip, compares budgets, writes `perf/baseline.json`. ✅
+2. `cargo xtask scorecard` — generates `docs/scorecard.md` from the tree + baseline. ✅
+3. Viewport re-composites only when the scene/camera/settings/size signature changes. ✅
+4. Release packaging/signing. ⏳ (deferred)
 
 Acceptance: `cargo run -p substancecraft` opens the window, imports a sample glTF/OBJ, orbits with a
 real camera, PBR-shades it with IBL and tone mapping, switches display modes — all via commands; the

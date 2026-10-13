@@ -1,10 +1,13 @@
 //! The 3D viewport panel: renders the scene offscreen with the wgpu renderer, shows the result as an
 //! egui image, maps pointer input onto the camera, and projects paint strokes onto the mesh.
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
 use substancecraft_engine::session::{Session, SharedSession, lock};
 use substancecraft_geom::glam::Vec2;
 use substancecraft_paint::ToolKind;
-use substancecraft_render::ViewportRenderer;
+use substancecraft_render::{ToneMap, ViewportRenderer};
 
 /// The active viewport tool.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -67,6 +70,7 @@ pub struct Viewport {
     uploaded_environment_revision: u64,
     applied_selection: Option<(u64, bool)>,
     applied_base_revision: Option<u64>,
+    last_signature: Option<u64>,
     painting: bool,
 }
 
@@ -91,25 +95,34 @@ impl Viewport {
             self.renderer = Some(ViewportRenderer::new(&render_state.device));
         }
 
-        self.upload_if_changed(&render_state.device, &render_state.queue, session);
-        self.apply_state(&render_state.device, &render_state.queue, session);
-
-        let resized = self.renderer.as_ref().is_none_or(|renderer| renderer.size() != (width, height));
-        if resized && let Some(renderer) = self.renderer.as_mut() {
-            renderer.resize(&render_state.device, width, height);
-            if let Some(old) = self.texture_id.take() {
-                render_state.renderer.write().free_texture(&old);
-            }
-            if let Some(view) = renderer.color_view() {
-                let id = render_state.renderer.write().register_native_texture(&render_state.device, view, eframe::wgpu::FilterMode::Linear);
-                self.texture_id = Some(id);
-                self.uploaded_size = (width, height);
-            }
-        }
-
-        if let Some(renderer) = self.renderer.as_mut() {
+        // Only re-composite and re-render when something that affects the image changed.
+        let signature = {
             let session = lock(session);
-            renderer.render(&render_state.device, &render_state.queue, session.camera(), session.settings());
+            scene_signature(&session, width, height)
+        };
+        let needs_render = self.last_signature != Some(signature) || self.texture_id.is_none();
+        if needs_render {
+            self.upload_if_changed(&render_state.device, &render_state.queue, session);
+            self.apply_state(&render_state.device, &render_state.queue, session);
+
+            let resized = self.renderer.as_ref().is_none_or(|renderer| renderer.size() != (width, height));
+            if resized && let Some(renderer) = self.renderer.as_mut() {
+                renderer.resize(&render_state.device, width, height);
+                if let Some(old) = self.texture_id.take() {
+                    render_state.renderer.write().free_texture(&old);
+                }
+                if let Some(view) = renderer.color_view() {
+                    let id = render_state.renderer.write().register_native_texture(&render_state.device, view, eframe::wgpu::FilterMode::Linear);
+                    self.texture_id = Some(id);
+                    self.uploaded_size = (width, height);
+                }
+            }
+
+            if let Some(renderer) = self.renderer.as_mut() {
+                let session = lock(session);
+                renderer.render(&render_state.device, &render_state.queue, session.camera(), session.settings());
+            }
+            self.last_signature = Some(signature);
         }
 
         let Some(texture_id) = self.texture_id else { return action };
@@ -264,4 +277,46 @@ fn pick_hit(session: &Session, position: egui::Pos2, rect: egui::Rect, aspect: f
     let texels = session.paint_resolution() as f32;
     let scale = (world_per_px * uv_per_world * texels).max(0.0);
     Some((hit, scale))
+}
+
+/// A cheap hash of everything that changes the rendered image, so the viewport can skip work when
+/// nothing has changed.
+fn scene_signature(session: &Session, width: u32, height: u32) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    width.hash(&mut hasher);
+    height.hash(&mut hasher);
+    session.scene_revision().hash(&mut hasher);
+    session.environment_revision().hash(&mut hasher);
+    session.texture_set_revision().hash(&mut hasher);
+    session.bake_revision().hash(&mut hasher);
+
+    let camera = session.camera();
+    camera.distance.to_bits().hash(&mut hasher);
+    camera.yaw.to_bits().hash(&mut hasher);
+    camera.pitch.to_bits().hash(&mut hasher);
+    for axis in camera.target.to_array() {
+        axis.to_bits().hash(&mut hasher);
+    }
+    camera.projection.id().hash(&mut hasher);
+
+    let settings = session.settings();
+    settings.display.id().hash(&mut hasher);
+    settings.exposure_stops.to_bits().hash(&mut hasher);
+    tone_map_code(settings.tone_map).hash(&mut hasher);
+    settings.show_grid.hash(&mut hasher);
+    settings.show_background.hash(&mut hasher);
+    settings.isolate_active_set.hash(&mut hasher);
+    settings.vignette.to_bits().hash(&mut hasher);
+    settings.bloom.to_bits().hash(&mut hasher);
+    hasher.finish()
+}
+
+fn tone_map_code(tone_map: ToneMap) -> u8 {
+    match tone_map {
+        ToneMap::None => 0,
+        ToneMap::Reinhard => 1,
+        ToneMap::Aces => 2,
+        ToneMap::Agx => 3,
+        ToneMap::Neutral => 4,
+    }
 }

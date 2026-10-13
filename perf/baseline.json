@@ -1,0 +1,7 @@
+{
+  "scenarios": {
+    "bake_ao_256_ms": 641.796666,
+    "compose_2k_ms": 276.847417,
+    "project_roundtrip_ms": 45.452917
+  }
+}

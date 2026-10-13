@@ -12,3 +12,9 @@ description = "Workspace tasks: layering, CI, build packaging and stats."
 [dependencies]
 serde_json.workspace = true
 sha2.workspace = true
+substancecraft-geom.workspace = true
+substancecraft-doc.workspace = true
+substancecraft-raster.workspace = true
+substancecraft-compose.workspace = true
+substancecraft-bake.workspace = true
+substancecraft-format.workspace = true
