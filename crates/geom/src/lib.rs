@@ -9,11 +9,13 @@
 pub mod bounds;
 pub mod mesh;
 pub mod primitives;
+pub mod raycast;
 pub mod tangents;
 
 pub use bounds::Bounds;
 pub use glam;
 pub use mesh::{Mesh, Submesh};
+pub use raycast::{Hit, Ray, raycast};
 
 use thiserror::Error;
 

@@ -15,9 +15,9 @@ normal, roughness, metalness, UV checker, wireframe); ground grid and sky/enviro
 wgpu viewport hosted in egui; offscreen snapshot plus live `ui.screenshot`; pinned CC0 assets via
 `cargo xtask assets`.
 
-**M3 — Layer stack: complete.** Per-texture-set non-destructive stack of fill/group layers with
-masks, opacity, 8 blend modes and visibility; a CPU compositor oracle and a GPU compositor validated
-against it; a layer-stack UI with a live composite preview; undo/redo. 41 commands.
+**M4 — Painting: complete.** Brush engine (dabs, spacing, hardness, size/opacity pressure, symmetry),
+raycast projection painting into layer targets with one undo step per stroke, and the composited base
+colour fed back into the 3D viewport. Brush panel and Paint/Orbit tool. 51 commands.
 
 ## Milestones
 
@@ -27,7 +27,8 @@ against it; a layer-stack UI with a live composite preview; undo/redo. 41 comman
 | **M1** | Viewport + PBR preview | import, camera, PBR, IBL, tone mapping, display modes, grid ✅ |
 | **M2** | Texture sets & UV tiles | split by material, per-set channels/resolution/UDIM, solo ✅ |
 | **M3** | Layer stack | fill/group layers, masks, blend modes, CPU + GPU compositor, undo ✅ |
-| M4 | Painting | brush engine, tablet pressure, projection painting into layer targets |
+| **M4** | Painting | brush engine, projection painting, live composited base colour ✅ |
+| M5 | Painting tools | projection, polyfill, smudge, clone, particle/physics brushes |
 | M3 | Layer stack | doc model, fill/mask/group/blend, CPU oracle + GPU compositor, undo |
 | M4 | Painting | brush engine, tablet pressure, projection painting |
 | M5 | Painting tools | projection, polyfill, smudge, clone, particle/physics brushes |

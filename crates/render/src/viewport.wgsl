@@ -30,6 +30,8 @@ struct Material {
 
 @group(2) @binding(0) var env_texture: texture_2d<f32>;
 @group(2) @binding(1) var env_sampler: sampler;
+@group(3) @binding(0) var base_color_texture: texture_2d<f32>;
+@group(3) @binding(1) var base_color_sampler: sampler;
 
 const PI: f32 = 3.14159265359;
 
@@ -126,6 +128,11 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let base_color = material.base_color;
     let metallic = clamp(material.params.x, 0.0, 1.0);
     let roughness = clamp(material.params.y, 0.04, 1.0);
+    // params.z selects the composited base-colour texture when set.
+    var albedo = base_color.rgb;
+    if (material.params.z > 0.5) {
+        albedo = textureSample(base_color_texture, base_color_sampler, in.uv).rgb;
+    }
     let display_mode = i32(camera.params.y + 0.5);
     let tonemap_mode = i32(camera.params.z + 0.5);
 
@@ -153,22 +160,22 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let n_dot_v = max(dot(n, v), 1e-4);
     let n_dot_h = max(dot(n, h), 0.0);
 
-    let f0 = mix(vec3<f32>(0.04), base_color.rgb, metallic);
+    let f0 = mix(vec3<f32>(0.04), albedo, metallic);
     let f = fresnel_schlick(max(dot(h, v), 0.0), f0);
     let ndf = distribution_ggx(n_dot_h, roughness);
     let g = geometry_smith(n_dot_v, n_dot_l, roughness);
     let specular = (ndf * g * f) / max(4.0 * n_dot_v * n_dot_l, 1e-4);
     let kd = (vec3<f32>(1.0) - f) * (1.0 - metallic);
-    let direct = (kd * base_color.rgb / PI + specular) * camera.light_color.rgb * n_dot_l;
+    let direct = (kd * albedo / PI + specular) * camera.light_color.rgb * n_dot_l;
 
     let hemisphere = mix(camera.ambient_ground.rgb, camera.ambient_sky.rgb, n.y * 0.5 + 0.5);
-    var ambient = hemisphere * base_color.rgb * (1.0 - metallic * 0.5);
+    var ambient = hemisphere * albedo * (1.0 - metallic * 0.5);
     if (camera.env_params.x > 0.5) {
         let f_ibl = fresnel_schlick_roughness(n_dot_v, f0, roughness);
         let kd_ibl = (vec3<f32>(1.0) - f_ibl) * (1.0 - metallic);
         let irradiance = sample_environment(n, camera.env_params.y);
         let reflection = sample_environment(reflect(-v, n), roughness * camera.env_params.y);
-        ambient = kd_ibl * base_color.rgb * irradiance + reflection * f_ibl;
+        ambient = kd_ibl * albedo * irradiance + reflection * f_ibl;
     }
     let color = direct + ambient;
 

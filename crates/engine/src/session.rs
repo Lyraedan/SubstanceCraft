@@ -3,11 +3,17 @@
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use substancecraft_codecs::ImageF32;
-use substancecraft_doc::{BlendMode, Channel, Layer, LayerStack, Mask, Project, Scene, TextureSet, UvTile};
+use substancecraft_doc::{BlendMode, Channel, Layer, LayerKind, LayerStack, Mask, Project, Scene, TextureSet, UvTile};
+use substancecraft_paint::{BrushSettings, StrokeState};
+use substancecraft_raster::RasterImage;
 use substancecraft_render::{OrbitCamera, RenderSettings};
 
 /// The maximum number of undo steps kept.
 const MAX_UNDO: usize = 64;
+
+/// The largest working paint resolution (the texture set resolution may be higher; painting and
+/// the live viewport composite use this cap for performance).
+const MAX_PAINT_RESOLUTION: u32 = 1024;
 
 /// A session shared between the UI thread and background servers (control channel, MCP).
 pub type SharedSession = Arc<Mutex<Session>>;
@@ -52,6 +58,10 @@ pub struct Session {
     /// Undo/redo stacks of texture-set snapshots (the layer data).
     undo_stack: Vec<Vec<TextureSet>>,
     redo_stack: Vec<Vec<TextureSet>>,
+    /// The brush parameters.
+    brush: BrushSettings,
+    /// The in-progress stroke, if the pointer is down.
+    stroke: Option<StrokeState>,
 }
 
 impl Default for Session {
@@ -77,6 +87,8 @@ impl Session {
             screenshot_request: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            brush: BrushSettings::default(),
+            stroke: None,
         }
     }
 
@@ -468,6 +480,97 @@ impl Session {
         self.bump_texture_sets();
         true
     }
+
+    /// The brush parameters.
+    pub fn brush(&self) -> &BrushSettings {
+        &self.brush
+    }
+
+    /// The brush parameters, mutably.
+    pub fn brush_mut(&mut self) -> &mut BrushSettings {
+        &mut self.brush
+    }
+
+    /// The working paint resolution for the active set (capped).
+    fn paint_resolution(&self) -> u32 {
+        self.project.active_set().map(|set| set.resolution.clamp(64, MAX_PAINT_RESOLUTION)).unwrap_or(256)
+    }
+
+    /// Ensure the top layer of the active set is a paint layer with an image at `resolution`.
+    fn ensure_paint_layer(&mut self, resolution: u32) {
+        let Some(set) = self.project.active_set_mut() else { return };
+        if !set.layers.layers.last().is_some_and(|layer| matches!(layer.kind, LayerKind::Paint { .. })) {
+            set.layers.push(Layer::paint("Paint"));
+        }
+        if let Some(layer) = set.layers.layers.last_mut()
+            && let LayerKind::Paint { image } = &mut layer.kind
+        {
+            let needs = image.as_ref().is_none_or(|img| img.width != resolution || img.height != resolution);
+            if needs {
+                *image = Some(RasterImage::filled(resolution, resolution, [0.0, 0.0, 0.0, 0.0]));
+            }
+        }
+    }
+
+    /// The top paint layer's image, mutably.
+    fn active_paint_image_mut(&mut self) -> Option<&mut RasterImage> {
+        let set = self.project.active_set_mut()?;
+        for layer in set.layers.layers.iter_mut().rev() {
+            if let LayerKind::Paint { image: Some(image) } = &mut layer.kind {
+                return Some(image);
+            }
+        }
+        None
+    }
+
+    /// Begin a paint stroke at UV `(u, v)`. Ensures a paint layer exists and records one undo step.
+    pub fn begin_stroke(&mut self, u: f32, v: f32, pressure: f32) {
+        if self.project.active_set().is_none() {
+            return;
+        }
+        self.push_undo();
+        let resolution = self.paint_resolution();
+        self.ensure_paint_layer(resolution);
+
+        let brush = self.brush;
+        let mut stroke = self.stroke.take().unwrap_or_default();
+        if let Some(image) = self.active_paint_image_mut() {
+            let center = uv_to_pixels(u, v, image.width, image.height);
+            stroke.begin(image, &brush, center, pressure);
+        }
+        self.stroke = Some(stroke);
+        self.bump_texture_sets();
+    }
+
+    /// Continue the current paint stroke to UV `(u, v)`.
+    pub fn extend_stroke(&mut self, u: f32, v: f32, pressure: f32) {
+        if self.stroke.is_none() {
+            return;
+        }
+        let brush = self.brush;
+        let mut stroke = self.stroke.take().unwrap_or_default();
+        if let Some(image) = self.active_paint_image_mut() {
+            let center = uv_to_pixels(u, v, image.width, image.height);
+            stroke.extend(image, &brush, center, pressure);
+        }
+        self.stroke = Some(stroke);
+        self.bump_texture_sets();
+    }
+
+    /// End the current paint stroke.
+    pub fn end_stroke(&mut self) {
+        self.stroke = None;
+    }
+
+    /// Whether a stroke is in progress.
+    pub fn is_stroking(&self) -> bool {
+        self.stroke.is_some()
+    }
+}
+
+/// Convert UV to texture pixel coordinates, wrapping into `0..1`.
+fn uv_to_pixels(u: f32, v: f32, width: u32, height: u32) -> [f32; 2] {
+    [u.rem_euclid(1.0) * width as f32, v.rem_euclid(1.0) * height as f32]
 }
 
 #[cfg(test)]

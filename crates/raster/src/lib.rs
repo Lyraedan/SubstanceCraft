@@ -79,6 +79,17 @@ impl RasterImage {
         }
         bytes
     }
+
+    /// Convert to tightly packed RGBA8 without gamma encoding (linear, for GPU data textures).
+    pub fn to_rgba8_linear(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(self.pixels.len() * 4);
+        for pixel in &self.pixels {
+            for channel in pixel {
+                bytes.push((channel.clamp(0.0, 1.0) * 255.0 + 0.5) as u8);
+            }
+        }
+        bytes
+    }
 }
 
 /// Clamp and sRGB-encode one linear channel to a byte.

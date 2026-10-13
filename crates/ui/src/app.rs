@@ -12,11 +12,12 @@ use serde_json::{Value, json};
 use substancecraft_doc::{BlendMode, Channel, LayerKind, Material, TextureSet};
 use substancecraft_engine::command::{CommandError, CommandOutcome, CommandRegistry};
 use substancecraft_engine::session::{SharedSession, lock};
+use substancecraft_paint::Symmetry;
 use substancecraft_render::Projection;
 
 use crate::state::UiState;
 use crate::theme::Tokens;
-use crate::viewport::Viewport;
+use crate::viewport::{Viewport, ViewportAction, ViewportTool};
 
 /// Everything the shell persists between runs.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -77,6 +78,7 @@ pub struct StudioApp {
     rename_index: usize,
     active_layer: usize,
     layer_preview: Option<(u64, egui::TextureHandle)>,
+    tool: ViewportTool,
 }
 
 impl StudioApp {
@@ -102,6 +104,7 @@ impl StudioApp {
             rename_index: usize::MAX,
             active_layer: usize::MAX,
             layer_preview: None,
+            tool: ViewportTool::default(),
         };
         app.report(app.dispatch("scene.load_default", &Value::Null));
         app
@@ -132,6 +135,14 @@ impl StudioApp {
     fn toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.heading("SubstanceCraft");
+            ui.separator();
+
+            if ui.selectable_label(self.tool == ViewportTool::Paint, "Paint").clicked() {
+                self.tool = ViewportTool::Paint;
+            }
+            if ui.selectable_label(self.tool == ViewportTool::Orbit, "Orbit").clicked() {
+                self.tool = ViewportTool::Orbit;
+            }
             ui.separator();
 
             if ui.button("Load Demo").clicked() {
@@ -299,9 +310,62 @@ impl StudioApp {
 
     fn shelf_panel(&mut self, ui: &mut egui::Ui) {
         ui.add_space(4.0);
-        ui.strong("Shelf");
+        ui.strong("Brush");
         ui.separator();
-        ui.label(egui::RichText::new("Materials and brushes arrive in M6").color(Tokens::DARK.text_dim));
+        let (radius, hardness, spacing, opacity, color, symmetry) = {
+            let session = lock(&self.session);
+            let brush = *session.brush();
+            (brush.radius_px, brush.hardness, brush.spacing, brush.opacity, brush.color, brush.symmetry)
+        };
+
+        let mut radius_value = radius;
+        if ui.add(egui::Slider::new(&mut radius_value, 1.0..=256.0).text("Size")).changed() {
+            let _ = self.dispatch("brush.set_radius", &json!({ "radius": radius_value }));
+        }
+        let mut hardness_value = hardness;
+        if ui.add(egui::Slider::new(&mut hardness_value, 0.0..=1.0).text("Hardness")).changed() {
+            let _ = self.dispatch("brush.set_hardness", &json!({ "hardness": hardness_value }));
+        }
+        let mut spacing_value = spacing;
+        if ui.add(egui::Slider::new(&mut spacing_value, 0.01..=1.0).text("Spacing")).changed() {
+            let _ = self.dispatch("brush.set_spacing", &json!({ "spacing": spacing_value }));
+        }
+        let mut opacity_value = opacity;
+        if ui.add(egui::Slider::new(&mut opacity_value, 0.0..=1.0).text("Opacity")).changed() {
+            let _ = self.dispatch("brush.set_opacity", &json!({ "opacity": opacity_value }));
+        }
+        let mut rgba = color;
+        ui.horizontal(|ui| {
+            ui.label("Color");
+            if ui.color_edit_button_rgba_unmultiplied(&mut rgba).changed() {
+                let _ = self.dispatch("brush.set_color", &json!({ "color": rgba }));
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Symmetry");
+            egui::ComboBox::from_id_salt("sc.brush.symmetry").selected_text(symmetry.label()).show_ui(ui, |ui| {
+                for mode in Symmetry::ALL {
+                    if ui.selectable_label(mode == symmetry, mode.label()).clicked() {
+                        let _ = self.dispatch("brush.set_symmetry", &json!({ "mode": mode.id() }));
+                    }
+                }
+            });
+        });
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new("Left-drag paints on the model; right-drag pans.").color(Tokens::DARK.text_dim));
+    }
+
+    /// Turn a viewport paint action into a command.
+    fn handle_paint_action(&mut self, action: ViewportAction) {
+        match action {
+            ViewportAction::StrokeBegin { u, v } => self.report(self.dispatch("paint.stroke_begin", &json!({ "u": u, "v": v }))),
+            ViewportAction::StrokeExtend { u, v } => {
+                let _ = self.dispatch("paint.stroke_extend", &json!({ "u": u, "v": v }));
+            }
+            ViewportAction::StrokeEnd => {
+                let _ = self.dispatch("paint.stroke_end", &Value::Null);
+            }
+        }
     }
 
     fn layer_stack_panel(&mut self, ui: &mut egui::Ui) {
@@ -525,7 +589,13 @@ impl eframe::App for StudioApp {
             egui::Panel::bottom("sc.layers").default_size(200.0).min_size(120.0).resizable(true).show(ui, |ui| self.layer_stack_panel(ui));
         }
 
-        egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| self.viewport.show(ui, frame, &self.session));
+        let mut action = None;
+        egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
+            action = self.viewport.show(ui, frame, &self.session, self.tool);
+        });
+        if let Some(action) = action {
+            self.handle_paint_action(action);
+        }
     }
 
     fn on_exit(&mut self) {

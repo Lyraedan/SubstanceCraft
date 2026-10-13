@@ -83,6 +83,11 @@ fn composite_paint(image: &mut RasterImage, paint: &RasterImage, coverage: f32, 
         for x in 0..width {
             let u = (x as f32 + 0.5) / width as f32;
             let sample = paint.sample_nearest(u, v);
+            // Transparent paint contributes nothing; the sample alpha scales the coverage.
+            let coverage = (coverage * sample[3]).clamp(0.0, 1.0);
+            if coverage <= 0.0 {
+                continue;
+            }
             let src = if channel_is_scalar(channel) { [sample[0]; 3] } else { [sample[0], sample[1], sample[2]] };
             let index = (y as usize) * (width as usize) + (x as usize);
             if let Some(pixel) = image.pixels.get_mut(index) {
@@ -162,6 +167,7 @@ pub fn evaluate_base_color(set: &TextureSet, material: &Material, width: u32, he
 mod tests {
     use super::*;
     use substancecraft_doc::{Layer, Mask};
+    use substancecraft_raster::RasterImage;
 
     fn base() -> [f32; 4] {
         [0.0, 0.0, 0.0, 1.0]
@@ -242,5 +248,18 @@ mod tests {
         stack.push(Layer::fill("rough", [0.0, 0.0, 0.0, 1.0], 0.3));
         let image = evaluate_channel(&stack, Channel::Roughness, [0.0; 4], 1, 1);
         assert!((image.pixel(0, 0)[0] - 0.3).abs() < 1e-6);
+    }
+
+    #[test]
+    fn transparent_paint_leaves_the_base_untouched() {
+        let mut stack = LayerStack::new();
+        stack.push(Layer::fill("base", [0.2, 0.4, 0.8, 1.0], 0.0));
+        let mut paint = Layer::paint("paint");
+        if let LayerKind::Paint { image } = &mut paint.kind {
+            *image = Some(RasterImage::new(2, 2)); // fully transparent
+        }
+        stack.push(paint);
+        let image = evaluate_channel(&stack, Channel::BaseColor, base(), 2, 2);
+        assert!((image.pixel(0, 0)[0] - 0.2).abs() < 1e-6, "transparent paint blacked out the base");
     }
 }

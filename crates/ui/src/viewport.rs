@@ -1,10 +1,55 @@
-//! The 3D viewport panel: renders the scene offscreen with the wgpu renderer and shows the result
-//! as an egui image, and maps pointer input onto the session's orbit camera.
+//! The 3D viewport panel: renders the scene offscreen with the wgpu renderer, shows the result as an
+//! egui image, maps pointer input onto the camera, and projects paint strokes onto the mesh.
 
-use substancecraft_engine::session::{SharedSession, lock};
+use substancecraft_engine::session::{Session, SharedSession, lock};
+use substancecraft_geom::glam::Vec2;
 use substancecraft_render::ViewportRenderer;
 
-/// The viewport panel state: the renderer, its registered egui texture and the camera input.
+/// The active viewport tool.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ViewportTool {
+    /// Paint onto the active texture set (left drag paints).
+    #[default]
+    Paint,
+    /// Orbit the camera (left drag orbits).
+    Orbit,
+}
+
+impl ViewportTool {
+    /// A stable id for state.
+    pub fn id(self) -> &'static str {
+        match self {
+            ViewportTool::Paint => "paint",
+            ViewportTool::Orbit => "orbit",
+        }
+    }
+}
+
+/// An interaction the viewport produced for the shell to turn into a command.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ViewportAction {
+    /// Begin a paint stroke at UV.
+    StrokeBegin {
+        /// U coordinate.
+        u: f32,
+        /// V coordinate.
+        v: f32,
+    },
+    /// Continue a paint stroke at UV.
+    StrokeExtend {
+        /// U coordinate.
+        u: f32,
+        /// V coordinate.
+        v: f32,
+    },
+    /// End the current paint stroke.
+    StrokeEnd,
+}
+
+/// The composite resolution uploaded to the viewport.
+const COMPOSITE_RESOLUTION: u32 = 512;
+
+/// The viewport panel state.
 #[derive(Default)]
 pub struct Viewport {
     renderer: Option<ViewportRenderer>,
@@ -13,19 +58,21 @@ pub struct Viewport {
     uploaded_scene_revision: u64,
     uploaded_environment_revision: u64,
     applied_selection: Option<(u64, bool)>,
+    applied_base_revision: Option<u64>,
+    painting: bool,
 }
 
 impl Viewport {
-    /// Draw the viewport into `ui`, rendering the session's scene and handling camera input.
-    pub fn show(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, session: &SharedSession) {
+    /// Draw the viewport and handle input. Returns a paint action for the shell to dispatch.
+    pub fn show(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, session: &SharedSession, tool: ViewportTool) -> Option<ViewportAction> {
         let available = ui.available_size();
         let (rect, response) = ui.allocate_exact_size(available, egui::Sense::click_and_drag());
 
-        self.handle_camera(ui, &response, rect, session);
+        let action = self.handle_input(ui, &response, rect, session, tool);
 
         let Some(render_state) = frame.wgpu_render_state() else {
             ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, crate::theme::Tokens::DARK.viewport_bg);
-            return;
+            return action;
         };
 
         let pixels_per_point = ui.ctx().pixels_per_point();
@@ -37,7 +84,7 @@ impl Viewport {
         }
 
         self.upload_if_changed(&render_state.device, &render_state.queue, session);
-        self.apply_selection(session);
+        self.apply_state(&render_state.device, &render_state.queue, session);
 
         let resized = self.renderer.as_ref().is_none_or(|renderer| renderer.size() != (width, height));
         if resized && let Some(renderer) = self.renderer.as_mut() {
@@ -57,19 +104,68 @@ impl Viewport {
             renderer.render(&render_state.device, &render_state.queue, session.camera(), session.settings());
         }
 
-        let Some(texture_id) = self.texture_id else { return };
+        let Some(texture_id) = self.texture_id else { return action };
         ui.painter().image(texture_id, rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
         ui.painter().rect_stroke(rect, egui::CornerRadius::ZERO, egui::Stroke::new(1.0, crate::theme::Tokens::DARK.border), egui::StrokeKind::Inside);
         ui.painter().text(
             rect.left_bottom() + egui::vec2(6.0, -6.0),
             egui::Align2::LEFT_BOTTOM,
-            format!("{}×{}", self.uploaded_size.0, self.uploaded_size.1),
+            format!("{}×{}  ·  {}", self.uploaded_size.0, self.uploaded_size.1, tool.id()),
             egui::FontId::monospace(11.0),
             crate::theme::Tokens::DARK.text_dim,
         );
+        action
     }
 
-    /// Re-upload geometry and the environment when their session revisions change.
+    fn handle_input(
+        &mut self,
+        ui: &egui::Ui,
+        response: &egui::Response,
+        rect: egui::Rect,
+        session: &SharedSession,
+        tool: ViewportTool,
+    ) -> Option<ViewportAction> {
+        let pointer_delta = ui.input(|input| input.pointer.delta());
+        let scroll = ui.input(|input| input.smooth_scroll_delta.y);
+        let aspect = (rect.width() / rect.height().max(1.0)).max(1e-3);
+
+        if tool == ViewportTool::Paint {
+            if response.is_pointer_button_down_on() {
+                if let Some(position) = response.interact_pointer_pos() {
+                    let session = lock(session);
+                    if let Some(uv) = pick_uv(&session, position, rect, aspect) {
+                        let begin = !self.painting;
+                        self.painting = true;
+                        return Some(if begin {
+                            ViewportAction::StrokeBegin { u: uv[0], v: uv[1] }
+                        } else {
+                            ViewportAction::StrokeExtend { u: uv[0], v: uv[1] }
+                        });
+                    }
+                }
+                return None;
+            } else if self.painting {
+                self.painting = false;
+                return Some(ViewportAction::StrokeEnd);
+            }
+            // Fall through to camera controls for secondary/middle drags and scroll.
+        }
+
+        let mut session = lock(session);
+        if response.dragged_by(egui::PointerButton::Primary) {
+            if tool == ViewportTool::Orbit {
+                session.camera_mut().orbit(pointer_delta.x, pointer_delta.y);
+            }
+        } else if response.dragged_by(egui::PointerButton::Secondary) || response.dragged_by(egui::PointerButton::Middle) {
+            session.camera_mut().pan(pointer_delta.x, pointer_delta.y, rect.height());
+        }
+        if response.hovered() && scroll.abs() > 0.0 {
+            session.camera_mut().dolly(scroll * 0.0015);
+        }
+        None
+    }
+
+    /// Re-upload geometry and environment when their revisions change.
     fn upload_if_changed(&mut self, device: &eframe::wgpu::Device, queue: &eframe::wgpu::Queue, session: &SharedSession) {
         let guard = lock(session);
         let scene_revision = guard.scene_revision();
@@ -94,34 +190,50 @@ impl Viewport {
         }
     }
 
-    /// Apply texture-set isolation: hide non-active sets when solo is on.
-    fn apply_selection(&mut self, session: &SharedSession) {
-        let (revision, isolate, materials) = {
-            let guard = lock(session);
-            let isolate = guard.settings().isolate_active_set;
-            (guard.texture_set_revision(), isolate, isolate.then(|| guard.active_materials()))
-        };
-        if self.applied_selection == Some((revision, isolate)) {
-            return;
-        }
-        if let Some(renderer) = self.renderer.as_mut() {
-            renderer.set_visible_materials(materials);
-        }
-        self.applied_selection = Some((revision, isolate));
-    }
+    /// Apply texture-set selection (solo) and the composited base-colour texture.
+    fn apply_state(&mut self, device: &eframe::wgpu::Device, queue: &eframe::wgpu::Queue, session: &SharedSession) {
+        let revision = lock(session).texture_set_revision();
+        let isolate = lock(session).settings().isolate_active_set;
 
-    fn handle_camera(&mut self, ui: &egui::Ui, response: &egui::Response, rect: egui::Rect, session: &SharedSession) {
-        let pointer_delta = ui.input(|input| input.pointer.delta());
-        let scroll = ui.input(|input| input.smooth_scroll_delta.y);
-
-        let mut session = lock(session);
-        if response.dragged_by(egui::PointerButton::Primary) {
-            session.camera_mut().orbit(pointer_delta.x, pointer_delta.y);
-        } else if response.dragged_by(egui::PointerButton::Secondary) || response.dragged_by(egui::PointerButton::Middle) {
-            session.camera_mut().pan(pointer_delta.x, pointer_delta.y, rect.height());
+        if self.applied_selection != Some((revision, isolate)) {
+            let materials = {
+                let guard = lock(session);
+                isolate.then(|| guard.active_materials())
+            };
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.set_visible_materials(materials);
+            }
+            self.applied_selection = Some((revision, isolate));
         }
-        if response.hovered() && scroll.abs() > 0.0 {
-            session.camera_mut().dolly(scroll * 0.0015);
+
+        if self.applied_base_revision != Some(revision) {
+            let composite = {
+                let guard = lock(session);
+                guard.project().active_set().cloned().map(|set| {
+                    let material =
+                        set.materials.first().and_then(|id| guard.project().scene.materials.get(*id as usize)).cloned().unwrap_or_default();
+                    let image = substancecraft_compose::evaluate_base_color(&set, &material, COMPOSITE_RESOLUTION, COMPOSITE_RESOLUTION);
+                    (image, set.materials.clone())
+                })
+            };
+            if let Some((image, materials)) = composite
+                && let Some(renderer) = self.renderer.as_mut()
+            {
+                renderer.set_base_color_texture(device, queue, &image, &materials);
+            }
+            self.applied_base_revision = Some(revision);
         }
     }
+}
+
+/// Cast a picking ray through a screen position and return the mesh UV under it.
+fn pick_uv(session: &Session, position: egui::Pos2, rect: egui::Rect, aspect: f32) -> Option<[f32; 2]> {
+    if rect.width() <= 0.0 || rect.height() <= 0.0 {
+        return None;
+    }
+    let ndc_x = (position.x - rect.left()) / rect.width() * 2.0 - 1.0;
+    let ndc_y = 1.0 - (position.y - rect.top()) / rect.height() * 2.0;
+    let ray = session.camera().ray(Vec2::new(ndc_x, ndc_y), aspect);
+    let hit = substancecraft_geom::raycast(&session.scene().mesh, &ray)?;
+    Some([hit.uv.x, hit.uv.y])
 }

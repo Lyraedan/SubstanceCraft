@@ -4,28 +4,26 @@ Milestones and the current focus. The one-page summary is `ROADMAP.md`.
 
 ## Current focus
 
-**M4 — Painting.**
+**M5 — Painting tools.**
 
-M3 is complete (non-destructive layer stack, CPU/GPU compositors, layer UI, undo/redo). M4 adds the
-brush engine and paints into layer targets:
+M4 is complete (brush engine, projection painting, live composited base colour). M5 broadens the tool
+set and the paint path:
 
-1. Brush engine in `substancecraft-paint`: dabs, spacing, size/flow/opacity, pressure and tilt
-   curves, jitter, symmetry.
-2. Projection painting: map screen strokes through the mesh UVs into the active layer's channel
-   target.
-3. Tablet input (`substancecraft-tablet`) for pressure/tilt; wire it into the viewport.
-4. Feed the composited channels into the 3D viewport material so the painted result shows live.
-5. Painterly controls: eraser, colour picker, stroke smoothing, brush presets.
+1. Projection tool (paint an image through a placed plane), polygon fill, smudge and clone.
+2. Particle / physics brushes.
+3. Eraser tool and an active-layer target in the session.
+4. Native pen pressure/tilt and screen-space brush sizing.
+5. Streamed/GPU painting for large strokes.
 
 See `docs/gaps.md` for the ranked work list.
 
-## M3 deliverables (reference) — done
+## M4 deliverables (reference) — done
 
-1. `doc`: `Layer`, `LayerKind` (fill/paint/effect/group), `Mask`, `BlendMode`, `LayerStack`. ✅
-2. CPU compositor oracle (per channel) with tests. ✅
-3. GPU compositor for flat fill stacks, validated against the CPU. ✅
-4. Layer commands (add/delete/move/group/property/undo/redo). ✅
-5. Layer-stack UI with a live composite preview. ✅
+1. `paint`: brush engine (dabs, spacing, hardness, pressure, symmetry). ✅
+2. `geom`: ray/triangle picking (`Ray`, `raycast`, `Hit`). ✅
+3. `engine`: brush + stroke state, paint commands, per-stroke undo. ✅
+4. `render`: camera picking ray and a composited base-colour texture sampled by UV. ✅
+5. `ui`: Paint/Orbit tool, brush panel, pointer projection painting, live composited result. ✅
 
 Acceptance: `cargo run -p substancecraft` opens the window, imports a sample glTF/OBJ, orbits with a
 real camera, PBR-shades it with IBL and tone mapping, switches display modes — all via commands; the

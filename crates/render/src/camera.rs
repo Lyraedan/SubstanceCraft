@@ -1,7 +1,7 @@
 //! An orbit camera around a target point.
 
-use glam::{Mat4, Vec3};
-use substancecraft_geom::Bounds;
+use glam::{Mat4, Vec2, Vec3};
+use substancecraft_geom::{Bounds, Ray};
 
 /// The camera projection.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -134,6 +134,15 @@ impl OrbitCamera {
         self.znear = (self.distance * 0.001).max(1e-4);
         self.zfar = (self.distance * 200.0).max(10.0);
     }
+
+    /// A picking ray through a normalised device coordinate (`x`, `y` in `-1..=1`, y up).
+    pub fn ray(&self, ndc: Vec2, aspect: f32) -> Ray {
+        let inverse = self.view_projection(aspect.max(1e-3)).inverse();
+        let far = inverse * glam::Vec4::new(ndc.x, ndc.y, 1.0, 1.0);
+        let origin = self.position();
+        let target = if far.w.abs() > 1e-6 { Vec3::new(far.x / far.w, far.y / far.w, far.z / far.w) } else { self.target };
+        Ray { origin, direction: (target - origin).normalize_or_zero() }
+    }
 }
 
 #[cfg(test)]
@@ -192,5 +201,13 @@ mod tests {
         let orthographic = camera.projection(16.0 / 9.0);
         assert_ne!(perspective, orthographic);
         assert!(orthographic.to_cols_array().iter().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn centre_ray_points_at_the_target() {
+        let camera = OrbitCamera::default();
+        let ray = camera.ray(Vec2::ZERO, 16.0 / 9.0);
+        let to_target = (camera.target - camera.position()).normalize_or_zero();
+        assert!(ray.direction.dot(to_target) > 0.999, "centre ray should aim at the target");
     }
 }

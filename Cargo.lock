@@ -4009,6 +4009,7 @@ dependencies = [
  "substancecraft-io",
  "substancecraft-material",
  "substancecraft-paint",
+ "substancecraft-raster",
  "substancecraft-render",
  "thiserror 2.0.21",
 ]
@@ -4130,6 +4131,7 @@ dependencies = [
  "substancecraft-engine",
  "substancecraft-geom",
  "substancecraft-io",
+ "substancecraft-paint",
  "substancecraft-raster",
  "substancecraft-render",
  "thiserror 2.0.21",

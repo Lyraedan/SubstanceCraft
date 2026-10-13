@@ -4,7 +4,7 @@ Measured numbers, not estimates. Generated targets (`scorecard/*.toml`, `perf/bu
 `cargo xtask scorecard` task arrive with the performance milestone (M12). Until then this file is
 maintained by hand.
 
-_Last measured: 2026-10-13 (M3)._
+_Last measured: 2026-10-13 (M4)._
 
 ## Workspace
 
@@ -12,8 +12,8 @@ _Last measured: 2026-10-13 (M3)._
 |---|---|
 | Crates | 18 |
 | Apps | 2 |
-| Registered commands | 41 |
-| Rust files / lines | 50 / ~7.5k |
+| Registered commands | 51 |
+| Rust files / lines | 52 / ~8.6k |
 | `cargo xtask ci` | green |
 
 ## Compositor
@@ -21,6 +21,13 @@ _Last measured: 2026-10-13 (M3)._
 | Check | Result |
 |---|---|
 | GPU fill-stack composite vs independent CPU reference | within 2e-3 |
+
+## Painting
+
+| Check | Result |
+|---|---|
+| Projection paint → composite → viewport base colour | verified (`Build/m4_final.png`) |
+| A stroke is a single undo step | verified |
 
 ## Performance budgets
 

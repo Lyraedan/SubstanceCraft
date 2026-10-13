@@ -7,6 +7,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 use substancecraft_codecs::ImageF32;
 use substancecraft_doc::Scene;
+use substancecraft_raster::RasterImage;
 use thiserror::Error;
 
 use crate::camera::OrbitCamera;
@@ -107,6 +108,12 @@ pub struct ViewportRenderer {
     env_texture: Option<wgpu::Texture>,
     max_lod: f32,
     has_environment: bool,
+    base_color_layout: wgpu::BindGroupLayout,
+    base_color_sampler: wgpu::Sampler,
+    base_color_bind: wgpu::BindGroup,
+    base_color_texture: Option<wgpu::Texture>,
+    material_rows: Vec<[f32; 8]>,
+    base_texture_materials: Vec<u32>,
 
     vertex_buffer: Option<wgpu::Buffer>,
     index_buffer: Option<wgpu::Buffer>,
@@ -232,6 +239,38 @@ impl ViewportRenderer {
         });
         let default_env = create_solid_environment(device, &env_sampler, &env_layout);
 
+        let base_color_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("sc.viewport.base_color_layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let base_color_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("sc.viewport.base_color_sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let default_base = create_solid_base_color(device, &base_color_sampler, &base_color_layout);
+
         let camera_only_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sc.viewport.camera_only_layout"),
             bind_group_layouts: &[Some(&camera_layout)],
@@ -244,7 +283,7 @@ impl ViewportRenderer {
         });
         let pbr_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("sc.viewport.pbr_layout"),
-            bind_group_layouts: &[Some(&camera_layout), Some(&material_layout), Some(&env_layout)],
+            bind_group_layouts: &[Some(&camera_layout), Some(&material_layout), Some(&env_layout), Some(&base_color_layout)],
             immediate_size: 0,
         });
 
@@ -334,6 +373,12 @@ impl ViewportRenderer {
             env_texture: None,
             max_lod: 0.0,
             has_environment: false,
+            base_color_layout,
+            base_color_sampler,
+            base_color_bind: default_base,
+            base_color_texture: None,
+            material_rows: Vec::new(),
+            base_texture_materials: Vec::new(),
             vertex_buffer: None,
             index_buffer: None,
             draws: Vec::new(),
@@ -396,9 +441,9 @@ impl ViewportRenderer {
             self.draws.push(DrawRange { material: submesh.material, first_index: submesh.first_index, index_count: submesh.index_count });
         }
 
-        let mut materials = vec![[0.0f32; 8]; MAX_MATERIALS];
+        self.material_rows = vec![[0.0f32; 8]; MAX_MATERIALS];
         for (index, material) in scene.materials.iter().take(MAX_MATERIALS).enumerate() {
-            materials[index] = [
+            self.material_rows[index] = [
                 material.base_color[0],
                 material.base_color[1],
                 material.base_color[2],
@@ -410,16 +455,10 @@ impl ViewportRenderer {
             ];
         }
         if scene.materials.is_empty() {
-            materials[0] = [0.8, 0.8, 0.8, 1.0, 0.0, 0.5, 0.0, 0.0];
+            self.material_rows[0] = [0.8, 0.8, 0.8, 1.0, 0.0, 0.5, 0.0, 0.0];
         }
-        let mut bytes = vec![0u8; self.material_stride as usize * MAX_MATERIALS];
-        for (index, values) in materials.iter().enumerate() {
-            let uniform =
-                MaterialUniform { base_color: [values[0], values[1], values[2], values[3]], params: [values[4], values[5], values[6], values[7]] };
-            let offset = index * self.material_stride as usize;
-            bytes[offset..offset + std::mem::size_of::<MaterialUniform>()].copy_from_slice(bytemuck::bytes_of(&uniform));
-        }
-        queue.write_buffer(&self.material_buffer, 0, &bytes);
+        self.base_texture_materials.clear();
+        self.write_materials(queue);
 
         let edge_vertices = build_edges(mesh);
         self.edge_vertex_count = edge_vertices.len() as u32;
@@ -515,6 +554,59 @@ impl ViewportRenderer {
     /// Restrict drawing to the given material ids; `None` draws every submesh.
     pub fn set_visible_materials(&mut self, materials: Option<Vec<u32>>) {
         self.visible_materials = materials;
+    }
+
+    /// Upload the composited base-colour texture and mark the given materials to sample it.
+    pub fn set_base_color_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, image: &RasterImage, materials: &[u32]) {
+        if image.is_empty() {
+            self.base_color_bind = create_solid_base_color(device, &self.base_color_sampler, &self.base_color_layout);
+            self.base_color_texture = None;
+            self.base_texture_materials.clear();
+            self.write_materials(queue);
+            return;
+        }
+
+        let bytes = image.to_rgba8_linear();
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("sc.viewport.base_color"),
+            size: wgpu::Extent3d { width: image.width, height: image.height, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo { texture: &texture, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+            &bytes,
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(image.width * 4), rows_per_image: Some(image.height) },
+            wgpu::Extent3d { width: image.width, height: image.height, depth_or_array_layers: 1 },
+        );
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        self.base_color_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("sc.viewport.base_color_bind"),
+            layout: &self.base_color_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.base_color_sampler) },
+            ],
+        });
+        self.base_color_texture = Some(texture);
+        self.base_texture_materials = materials.to_vec();
+        self.write_materials(queue);
+    }
+
+    /// Rewrite the material uniform buffer, flagging materials that sample the base-colour texture.
+    fn write_materials(&self, queue: &wgpu::Queue) {
+        let mut bytes = vec![0u8; self.material_stride as usize * MAX_MATERIALS];
+        for (index, row) in self.material_rows.iter().enumerate() {
+            let use_texture = if self.base_texture_materials.contains(&(index as u32)) { 1.0 } else { 0.0 };
+            let uniform = MaterialUniform { base_color: [row[0], row[1], row[2], row[3]], params: [row[4], row[5], use_texture, 0.0] };
+            let offset = index * self.material_stride as usize;
+            bytes[offset..offset + std::mem::size_of::<MaterialUniform>()].copy_from_slice(bytemuck::bytes_of(&uniform));
+        }
+        queue.write_buffer(&self.material_buffer, 0, &bytes);
     }
 
     /// (Re)create the offscreen colour and depth targets. A zero size is treated as 1×1.
@@ -626,6 +718,7 @@ impl ViewportRenderer {
                 pass.set_pipeline(&self.pbr_pipeline);
                 pass.set_bind_group(0, &self.camera_bind_group, &[]);
                 pass.set_bind_group(2, &self.env_bind_group, &[]);
+                pass.set_bind_group(3, &self.base_color_bind, &[]);
                 let (Some(vertex_buffer), Some(index_buffer)) = (self.vertex_buffer.as_ref(), self.index_buffer.as_ref()) else {
                     return;
                 };
@@ -852,6 +945,29 @@ fn create_solid_environment(device: &wgpu::Device, sampler: &wgpu::Sampler, layo
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("sc.viewport.env_default_bind"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
+        ],
+    })
+}
+
+/// A 1×1 placeholder base-colour texture so the bind group is always valid.
+fn create_solid_base_color(device: &wgpu::Device, sampler: &wgpu::Sampler, layout: &wgpu::BindGroupLayout) -> wgpu::BindGroup {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("sc.viewport.base_color_default"),
+        size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("sc.viewport.base_color_default_bind"),
         layout,
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
