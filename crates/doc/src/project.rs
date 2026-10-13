@@ -10,6 +10,7 @@ use substancecraft_geom::Mesh;
 
 use crate::Scene;
 use crate::layers::LayerStack;
+use crate::shader::{Shader, ShaderParams};
 
 /// The default texture resolution for a new set.
 pub const DEFAULT_RESOLUTION: u32 = 2048;
@@ -125,11 +126,15 @@ pub struct TextureSet {
     pub uv_tiles: Vec<UvTile>,
     /// The non-destructive layer stack.
     pub layers: LayerStack,
+    /// The shading model assigned to this set.
+    pub shader: Shader,
+    /// Editable shader parameters.
+    pub shader_params: ShaderParams,
 }
 
 impl TextureSet {
-    /// A new set with the default resolution, metal/rough channels, the base UV tile and an
-    /// empty layer stack.
+    /// A new set with the default resolution, metal/rough channels, the base UV tile, an empty
+    /// layer stack and the default OpenPBR shader.
     pub fn new(name: impl Into<String>, materials: Vec<u32>) -> Self {
         Self {
             name: name.into(),
@@ -139,6 +144,8 @@ impl TextureSet {
             channels: Channel::metal_rough_default(),
             uv_tiles: vec![UvTile::DEFAULT],
             layers: LayerStack::new(),
+            shader: Shader::default(),
+            shader_params: ShaderParams::default(),
         }
     }
 

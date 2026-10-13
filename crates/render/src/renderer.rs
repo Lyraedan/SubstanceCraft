@@ -114,6 +114,7 @@ pub struct ViewportRenderer {
     base_color_texture: Option<wgpu::Texture>,
     material_rows: Vec<[f32; 8]>,
     base_texture_materials: Vec<u32>,
+    material_override: Option<MaterialOverride>,
 
     vertex_buffer: Option<wgpu::Buffer>,
     index_buffer: Option<wgpu::Buffer>,
@@ -124,10 +125,27 @@ pub struct ViewportRenderer {
     grid_vertex_count: u32,
     visible_materials: Option<Vec<u32>>,
 
+    post_pipeline: wgpu::RenderPipeline,
+    post_sampler: wgpu::Sampler,
+    post_layout: wgpu::BindGroupLayout,
+    post_uniform: wgpu::Buffer,
+    post_bind: Option<wgpu::BindGroup>,
+    scene_color: Option<wgpu::Texture>,
+    scene_view: Option<wgpu::TextureView>,
+
     color: Option<wgpu::Texture>,
     color_view: Option<wgpu::TextureView>,
     depth_view: Option<wgpu::TextureView>,
     size: (u32, u32),
+}
+
+/// A per-set shader override applied to a group of materials.
+#[derive(Clone, Debug)]
+struct MaterialOverride {
+    materials: Vec<u32>,
+    tint: [f32; 3],
+    metallic: f32,
+    roughness: f32,
 }
 
 impl ViewportRenderer {
@@ -358,6 +376,74 @@ impl ViewportRenderer {
         }
         grid_buffer.unmap();
 
+        // Post-effect pass resources.
+        let post_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("sc.viewport.post"),
+            source: wgpu::ShaderSource::Wgsl(POST_SHADER.into()),
+        });
+        let post_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("sc.viewport.post_layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(16),
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let post_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("sc.viewport.post_pipeline_layout"),
+            bind_group_layouts: &[Some(&post_layout)],
+            immediate_size: 0,
+        });
+        let post_pipeline = create_pipeline(
+            device,
+            "sc.viewport.post_pipeline",
+            &post_pipeline_layout,
+            &post_shader,
+            "vs_post",
+            "fs_post",
+            &[],
+            wgpu::PrimitiveTopology::TriangleList,
+            None,
+        );
+        let post_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("sc.viewport.post_sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let post_uniform = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("sc.viewport.post_uniform"),
+            size: 16,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             pbr_pipeline,
             line_pipeline,
@@ -379,6 +465,7 @@ impl ViewportRenderer {
             base_color_texture: None,
             material_rows: Vec::new(),
             base_texture_materials: Vec::new(),
+            material_override: None,
             vertex_buffer: None,
             index_buffer: None,
             draws: Vec::new(),
@@ -387,6 +474,13 @@ impl ViewportRenderer {
             grid_buffer,
             grid_vertex_count: grid_vertices.len() as u32,
             visible_materials: None,
+            post_pipeline,
+            post_sampler,
+            post_layout,
+            post_uniform,
+            post_bind: None,
+            scene_color: None,
+            scene_view: None,
             color: None,
             color_view: None,
             depth_view: None,
@@ -601,12 +695,30 @@ impl ViewportRenderer {
     fn write_materials(&self, queue: &wgpu::Queue) {
         let mut bytes = vec![0u8; self.material_stride as usize * MAX_MATERIALS];
         for (index, row) in self.material_rows.iter().enumerate() {
+            let mut base_color = [row[0], row[1], row[2], row[3]];
+            let mut metallic = row[4];
+            let mut roughness = row[5];
+            if let Some(over) = &self.material_override
+                && over.materials.contains(&(index as u32))
+            {
+                base_color[0] *= over.tint[0];
+                base_color[1] *= over.tint[1];
+                base_color[2] *= over.tint[2];
+                metallic = over.metallic;
+                roughness = over.roughness;
+            }
             let use_texture = if self.base_texture_materials.contains(&(index as u32)) { 1.0 } else { 0.0 };
-            let uniform = MaterialUniform { base_color: [row[0], row[1], row[2], row[3]], params: [row[4], row[5], use_texture, 0.0] };
+            let uniform = MaterialUniform { base_color, params: [metallic, roughness, use_texture, 0.0] };
             let offset = index * self.material_stride as usize;
             bytes[offset..offset + std::mem::size_of::<MaterialUniform>()].copy_from_slice(bytemuck::bytes_of(&uniform));
         }
         queue.write_buffer(&self.material_buffer, 0, &bytes);
+    }
+
+    /// Override metallic/roughness/tint for a group of materials (the active set's shader parameters).
+    pub fn set_material_override(&mut self, queue: &wgpu::Queue, materials: Option<(Vec<u32>, [f32; 3], f32, f32)>) {
+        self.material_override = materials.map(|(materials, tint, metallic, roughness)| MaterialOverride { materials, tint, metallic, roughness });
+        self.write_materials(queue);
     }
 
     /// (Re)create the offscreen colour and depth targets. A zero size is treated as 1×1.
@@ -628,6 +740,16 @@ impl ViewportRenderer {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
+        let scene = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("sc.viewport.scene"),
+            size: extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: COLOR_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
         let depth = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("sc.viewport.depth"),
             size: extent,
@@ -639,8 +761,21 @@ impl ViewportRenderer {
             view_formats: &[],
         });
 
+        let scene_view = scene.create_view(&wgpu::TextureViewDescriptor::default());
+        self.post_bind = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("sc.viewport.post_bind"),
+            layout: &self.post_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&scene_view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.post_sampler) },
+                wgpu::BindGroupEntry { binding: 2, resource: self.post_uniform.as_entire_binding() },
+            ],
+        }));
+
         self.color_view = Some(color.create_view(&wgpu::TextureViewDescriptor::default()));
         self.depth_view = Some(depth.create_view(&wgpu::TextureViewDescriptor::default()));
+        self.scene_view = Some(scene_view);
+        self.scene_color = Some(scene);
         self.color = Some(color);
         self.size = (width, height);
     }
@@ -662,7 +797,8 @@ impl ViewportRenderer {
 
     /// Draw the current scene. A no-op if there is no target.
     pub fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, camera: &OrbitCamera, settings: &RenderSettings) {
-        let (Some(color_view), Some(depth_view)) = (self.color_view.as_ref(), self.depth_view.as_ref()) else {
+        let (Some(color_view), Some(scene_view), Some(depth_view)) = (self.color_view.as_ref(), self.scene_view.as_ref(), self.depth_view.as_ref())
+        else {
             return;
         };
 
@@ -689,7 +825,7 @@ impl ViewportRenderer {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("sc.viewport.pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: color_view,
+                    view: scene_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -752,6 +888,28 @@ impl ViewportRenderer {
                 pass.set_vertex_buffer(0, edge_buffer.slice(..));
                 pass.draw(0..self.edge_vertex_count, 0..1);
             }
+        }
+
+        // Post-effect pass over the scene image (vignette + bloom) into the display target.
+        let post = [1.0 / width.max(1) as f32, 1.0 / height.max(1) as f32, settings.vignette.clamp(0.0, 1.0), settings.bloom.clamp(0.0, 1.0)];
+        queue.write_buffer(&self.post_uniform, 0, bytemuck::bytes_of(&post));
+        if let Some(post_bind) = self.post_bind.as_ref() {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("sc.viewport.post_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: color_view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.post_pipeline);
+            pass.set_bind_group(0, post_bind, &[]);
+            pass.draw(0..3, 0..1);
         }
         queue.submit(Some(encoder.finish()));
     }
@@ -1025,3 +1183,4 @@ fn build_mip_chain(image: &ImageF32) -> Vec<Vec<[f32; 4]>> {
 const SHADER: &str = include_str!("viewport.wgsl");
 const LINE_SHADER: &str = include_str!("line.wgsl");
 const BACKGROUND_SHADER: &str = include_str!("background.wgsl");
+const POST_SHADER: &str = include_str!("post.wgsl");

@@ -37,6 +37,8 @@ pub fn specs() -> Vec<CommandSpec> {
         ),
         CommandSpec::new("viewport.use_demo_environment", "Demo Environment", "View > Environment", "no parameters", use_demo_environment),
         CommandSpec::new("viewport.clear_environment", "Clear Environment", "View > Environment", "no parameters", clear_environment),
+        CommandSpec::new("viewport.set_vignette", "Set Vignette", "View > Post", "value: number (0..1)", set_vignette),
+        CommandSpec::new("viewport.set_bloom", "Set Bloom", "View > Post", "value: number (0..1)", set_bloom),
     ]
 }
 
@@ -164,6 +166,26 @@ fn clear_environment(session: &mut Session, _params: &Value) -> CommandResult {
     session.set_environment(None);
     session.set_status("environment cleared");
     Ok(CommandOutcome::message("environment cleared"))
+}
+
+fn set_vignette(session: &mut Session, params: &Value) -> CommandResult {
+    let value = params.get("value").and_then(Value::as_f64).ok_or_else(|| CommandError::InvalidParams {
+        command: "viewport.set_vignette".to_string(),
+        message: "expected a numeric \"value\"".to_string(),
+    })?;
+    session.settings_mut().vignette = (value as f32).clamp(0.0, 1.0);
+    session.touch();
+    Ok(CommandOutcome::message(format!("vignette: {value:.2}")))
+}
+
+fn set_bloom(session: &mut Session, params: &Value) -> CommandResult {
+    let value = params.get("value").and_then(Value::as_f64).ok_or_else(|| CommandError::InvalidParams {
+        command: "viewport.set_bloom".to_string(),
+        message: "expected a numeric \"value\"".to_string(),
+    })?;
+    session.settings_mut().bloom = (value as f32).clamp(0.0, 1.0);
+    session.touch();
+    Ok(CommandOutcome::message(format!("bloom: {value:.2}")))
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use substancecraft_bake::{BakeMap, BakeSettings, Baker};
 use substancecraft_codecs::ImageF32;
-use substancecraft_doc::{BlendMode, Channel, Layer, LayerKind, LayerStack, Mask, Project, Scene, TextureSet, UvTile};
+use substancecraft_doc::{BlendMode, Channel, Layer, LayerKind, LayerStack, Mask, Project, Scene, Shader, ShaderParams, TextureSet, UvTile};
 use substancecraft_paint::{BrushSettings, StrokeState, ToolKind, clone_stamp, erase_stamp, paint_stamp, smudge_stamp};
 use substancecraft_raster::RasterImage;
 use substancecraft_render::{OrbitCamera, RenderSettings};
@@ -253,6 +253,22 @@ impl Session {
             && set.uv_tiles.contains(&tile)
         {
             set.uv_tiles.retain(|existing| *existing != tile);
+            self.bump_texture_sets();
+        }
+    }
+
+    /// Set the active texture set's shading model.
+    pub fn set_shader(&mut self, shader: Shader) {
+        if let Some(set) = self.project.active_set_mut() {
+            set.shader = shader;
+            self.bump_texture_sets();
+        }
+    }
+
+    /// Replace the active texture set's shader parameters.
+    pub fn set_shader_params(&mut self, params: ShaderParams) {
+        if let Some(set) = self.project.active_set_mut() {
+            set.shader_params = params;
             self.bump_texture_sets();
         }
     }

@@ -4,7 +4,7 @@ Where SubstanceCraft stands against Adobe Substance 3D Painter, dimension by dim
 lines carry the date; update the dimension when your work moves it. SubstanceCraft is a clean-room
 reimplementation: parity means comparable behaviour and results, never copied code or assets.
 
-_Last reviewed: 2026-10-13 (M8 complete)._
+_Last reviewed: 2026-10-13 (M9 complete)._
 
 | Dimension | Weight | Status | Notes |
 |---|---|---|---|
@@ -13,12 +13,21 @@ _Last reviewed: 2026-10-13 (M8 complete)._
 | Painting engine | high | 62% | Brush/eraser/smudge/clone/polyfill, screen-space sizing, symmetry, jitter, active-layer target, live composited result (M4–M5). |
 | Procedural content (generators/filters/smart materials) | high | 40% | Perlin/Simplex/Voronoi/White generators, levels/blur/invert/contrast/brightness filters, effect layers, shelf (M6). |
 | Baking (mesh maps + cage) | high | 50% | BVH-accelerated bakers: position, world/tangent normal, AO, thickness, curvature, material ID; high-poly import; save to PNG (M7). |
-| Export (presets, channels, UDIM, OpenPBR) | high | 55% | Channel export (PNG 8/16, TGA, EXR), presets (OpenPBR/glTF/Unreal/Unity/Spec-Gloss), packing, naming templates, UDIM naming, round-trip test (M8). |
-| Viewport & PBR preview | medium | 88% | Import, camera, PBR, HDRI IBL, tone mapping, display modes, grid, wireframe, composited base colour, snapshot. |
-| Shaders (OpenPBR / ASM) | medium | 0% | M9. |
-| Automation & scripting | medium | 35% | 70 commands; control channel drives viewport, texture sets, layers, brushes, tools, paint, effects, baking and export. |
+| Export (presets, channels, UDIM, OpenPBR) | high | 55% | Channel export (PNG 8/16, TGA, EXR), presets, packing, naming templates, UDIM naming, round-trip (M8). |
+| Viewport & PBR preview | medium | 90% | Import, camera, PBR, HDRI IBL, tone mapping, display modes, grid, wireframe, composited base colour, post-effects, snapshot. |
+| Shaders (OpenPBR / ASM) | medium | 35% | Per-set shader selection, editable params (metallic/roughness/specular/tint) feeding the viewport, post-effects (M9). |
+| Automation & scripting | medium | 35% | 74 commands; control channel drives viewport, texture sets, layers, brushes, tools, paint, effects, baking, export and shaders. |
 | Native project format | medium | 0% | M10. |
 | Performance | medium | n/a | No measurements yet. |
+
+## Workflow depth (M9) — partial
+
+- [x] Per-texture-set shader selection (OpenPBR / Metal-Rough / Spec-Gloss).
+- [x] Editable shader parameters (metallic, roughness, specular, base-colour tint) feeding viewport shading.
+- [x] Post-effects: vignette and bloom as a post-process pass.
+- [ ] Distinct OpenPBR vs spec/gloss shading models (the specular parameter is not yet consumed).
+- [ ] Anchor points and layer instancing across texture sets.
+- [ ] Physical-size scaling for UV projection.
 
 ## Export (M8) — complete
 

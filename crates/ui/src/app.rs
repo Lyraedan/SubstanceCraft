@@ -10,7 +10,7 @@ use craft_settings::{Location, Settings, SettingsStore};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use substancecraft_bake::BakeMap;
-use substancecraft_doc::{BlendMode, Channel, Filter, Generator, LayerKind, Material, TextureSet};
+use substancecraft_doc::{BlendMode, Channel, Filter, Generator, LayerKind, Material, Shader, TextureSet};
 use substancecraft_engine::command::{CommandError, CommandOutcome, CommandRegistry};
 use substancecraft_engine::session::{SharedSession, lock};
 use substancecraft_paint::{Symmetry, ToolKind};
@@ -243,7 +243,7 @@ impl StudioApp {
         ui.separator();
 
         // Snapshot the project state so we never hold the lock while dispatching.
-        let (sets, active, resolution, channels, tiles, isolate) = {
+        let (sets, active, resolution, channels, tiles, isolate, shader, params) = {
             let session = lock(&self.session);
             let project = session.project();
             let sets: Vec<(String, usize)> =
@@ -253,7 +253,8 @@ impl StudioApp {
                 .active_set()
                 .map(|set| (set.resolution, set.channels.clone(), set.uv_tiles.clone()))
                 .unwrap_or((2048, Vec::new(), Vec::new()));
-            (sets, active, resolution, channels, tiles, session.settings().isolate_active_set)
+            let (shader, params) = project.active_set().map(|set| (set.shader, set.shader_params)).unwrap_or_default();
+            (sets, active, resolution, channels, tiles, session.settings().isolate_active_set, shader, params)
         };
 
         if sets.is_empty() {
@@ -321,6 +322,37 @@ impl StudioApp {
         if ui.checkbox(&mut solo, "Solo active set").changed() {
             self.report(self.dispatch("texture_set.set_solo", &json!({ "enabled": solo })));
         }
+
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.label("Shader");
+            egui::ComboBox::from_id_salt("sc.set.shader").selected_text(shader.label()).show_ui(ui, |ui| {
+                for option in Shader::ALL {
+                    if ui.selectable_label(option == shader, option.label()).clicked() {
+                        self.report(self.dispatch("texture_set.set_shader", &json!({ "shader": option.id() })));
+                    }
+                }
+            });
+        });
+        let mut metallic = params.metallic;
+        if ui.add(egui::Slider::new(&mut metallic, 0.0..=1.0).text("Metallic")).changed() {
+            let _ = self.dispatch("shader.set", &json!({ "metallic": metallic }));
+        }
+        let mut roughness = params.roughness;
+        if ui.add(egui::Slider::new(&mut roughness, 0.0..=1.0).text("Roughness")).changed() {
+            let _ = self.dispatch("shader.set", &json!({ "roughness": roughness }));
+        }
+        let mut specular = params.specular;
+        if ui.add(egui::Slider::new(&mut specular, 0.0..=1.0).text("Specular")).changed() {
+            let _ = self.dispatch("shader.set", &json!({ "specular": specular }));
+        }
+        let mut tint = params.base_color_tint;
+        ui.horizontal(|ui| {
+            ui.label("Tint");
+            if ui.color_edit_button_rgb(&mut tint).changed() {
+                let _ = self.dispatch("shader.set", &json!({ "tint": tint }));
+            }
+        });
     }
 
     fn shelf_panel(&mut self, ui: &mut egui::Ui) {
@@ -341,6 +373,8 @@ impl StudioApp {
             bake_revision,
             first_bake,
             log,
+            vignette,
+            bloom,
         ) = {
             let session = lock(&self.session);
             let brush = *session.brush();
@@ -362,6 +396,8 @@ impl StudioApp {
                 session.bake_revision(),
                 first_bake,
                 session.bake_log().to_vec(),
+                session.settings().vignette,
+                session.settings().bloom,
             )
         };
 
@@ -505,6 +541,18 @@ impl StudioApp {
             }
             for line in &log {
                 ui.label(egui::RichText::new(line).color(Tokens::DARK.text_dim));
+            }
+
+            ui.add_space(6.0);
+            ui.separator();
+            ui.strong("Post");
+            let mut vignette_value = vignette;
+            if ui.add(egui::Slider::new(&mut vignette_value, 0.0..=1.0).text("Vignette")).changed() {
+                actions.push(("viewport.set_vignette", json!({ "value": vignette_value })));
+            }
+            let mut bloom_value = bloom;
+            if ui.add(egui::Slider::new(&mut bloom_value, 0.0..=1.0).text("Bloom")).changed() {
+                actions.push(("viewport.set_bloom", json!({ "value": bloom_value })));
             }
         });
 

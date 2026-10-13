@@ -1,7 +1,7 @@
 //! Texture-set commands: list, select, rename, channels, resolution and UV tiles.
 
 use serde_json::{Map, Value, json};
-use substancecraft_doc::{Channel, UvTile};
+use substancecraft_doc::{Channel, Shader, UvTile};
 
 use crate::command::{CommandError, CommandOutcome, CommandRegistry, CommandResult, CommandSpec};
 use crate::session::Session;
@@ -17,6 +17,8 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("texture_set.add_uv_tile", "Add UV Tile", "Window", "udim: number (>= 1001)", add_uv_tile),
         CommandSpec::new("texture_set.remove_uv_tile", "Remove UV Tile", "Window", "udim: number (>= 1001)", remove_uv_tile),
         CommandSpec::new("texture_set.set_solo", "Solo Texture Set", "Window", "enabled: bool", set_solo),
+        CommandSpec::new("texture_set.set_shader", "Set Shader", "Window", "shader: openpbr | metal_rough | spec_gloss", set_shader),
+        CommandSpec::new("shader.set", "Set Shader Parameters", "Window", "metallic?, roughness?, specular?, tint?: [r,g,b]", set_shader_params),
     ]
 }
 
@@ -153,6 +155,41 @@ fn parse_udim(command: &str, params: &Value) -> Result<UvTile, CommandError> {
         .ok_or_else(|| CommandError::InvalidParams { command: command.to_string(), message: format!("invalid UDIM: {udim}") })
 }
 
+fn set_shader(session: &mut Session, params: &Value) -> CommandResult {
+    let id = params.get("shader").and_then(Value::as_str).ok_or_else(|| invalid("texture_set.set_shader", "expected a \"shader\" string"))?;
+    let shader = Shader::from_id(id).ok_or_else(|| invalid("texture_set.set_shader", &format!("unknown shader: {id}")))?;
+    session.set_shader(shader);
+    session.set_status(format!("shader: {}", shader.label()));
+    Ok(CommandOutcome::message(shader.label()))
+}
+
+fn set_shader_params(session: &mut Session, params: &Value) -> CommandResult {
+    let mut current = session.project().active_set().map(|set| set.shader_params).unwrap_or_default();
+    if let Some(value) = params.get("metallic").and_then(Value::as_f64) {
+        current.metallic = (value as f32).clamp(0.0, 1.0);
+    }
+    if let Some(value) = params.get("roughness").and_then(Value::as_f64) {
+        current.roughness = (value as f32).clamp(0.0, 1.0);
+    }
+    if let Some(value) = params.get("specular").and_then(Value::as_f64) {
+        current.specular = (value as f32).clamp(0.0, 1.0);
+    }
+    if let Some(array) = params.get("tint").and_then(Value::as_array) {
+        if array.len() < 3 {
+            return Err(invalid("shader.set", "tint needs 3 numbers"));
+        }
+        for (index, value) in array.iter().take(3).enumerate() {
+            current.base_color_tint[index] = value.as_f64().ok_or_else(|| invalid("shader.set", "tint values must be numbers"))? as f32;
+        }
+    }
+    session.set_shader_params(current);
+    Ok(CommandOutcome::message("shader parameters updated"))
+}
+
+fn invalid(command: &str, message: &str) -> CommandError {
+    CommandError::InvalidParams { command: command.to_string(), message: message.to_string() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,5 +237,17 @@ mod tests {
         assert!(rename(&mut session, &json!({ "name": "" })).is_err());
         assert!(rename(&mut session, &json!({ "name": "Body" })).is_ok());
         assert_eq!(session.texture_sets()[0].name, "Body");
+    }
+
+    #[test]
+    fn shader_commands_validate_and_apply() {
+        let mut session = Session::new("test");
+        assert!(set_shader(&mut session, &json!({ "shader": "metal_rough" })).is_ok());
+        assert_eq!(session.project().active_set().map(|set| set.shader), Some(Shader::MetalRough));
+        assert!(set_shader(&mut session, &json!({ "shader": "toon" })).is_err());
+        assert!(set_shader_params(&mut session, &json!({ "metallic": 0.9, "roughness": 0.2 })).is_ok());
+        let params = session.project().active_set().map(|set| set.shader_params).unwrap_or_default();
+        assert!((params.metallic - 0.9).abs() < 1e-6 && (params.roughness - 0.2).abs() < 1e-6);
+        assert!(set_shader_params(&mut session, &json!({ "tint": [0.5, 0.5] })).is_err());
     }
 }

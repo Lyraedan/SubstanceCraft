@@ -4,26 +4,26 @@ Milestones and the current focus. The one-page summary is `ROADMAP.md`.
 
 ## Current focus
 
-**M9 — Workflow depth.**
+**M10 — Project lifecycle.**
 
-M8 is complete (channel export with presets/packing/naming/UDIM). M9 deepens the material workflow:
+M9 is partially complete (per-set shaders + params, post-effects; anchors/instancing/physical-size
+deferred). M10 adds the native project format:
 
-1. OpenPBR and legacy (metal-rough / spec-gloss / ASM-style) shaders with editable parameters,
-   selected per texture set (shader instances).
-2. Shader parameters feeding the viewport and export.
-3. Post-effects (tone mapping variants, bloom, vignette) as a post-process chain.
-4. Anchor points and layer instancing across texture sets.
-5. Physical-size scaling for UV projection.
+1. `substancecraft-format`: serialise the whole `Project` (scene, texture sets, layer stacks, shader,
+   paint images) to a crash-safe `.sccraft` file via `craft-atomic`.
+2. Save / open / save-as commands; the app title and dirty state follow the file.
+3. Project templates and a New Project window.
+4. Autosave and recovery of a damaged/partial file.
 
 See `docs/gaps.md` for the ranked work list.
 
-## M8 deliverables (reference) — done
+## M9 deliverables (reference) — partial
 
-1. `codecs`: PNG 8-bit/16-bit, TGA, EXR writers and a raw RGBA loader. ✅
-2. `io::export`: formats, presets, packing, naming, UDIM naming, `export_set`. ✅
-3. `engine`: `file.export_textures`, `export.presets`, `export.formats`. ✅
-4. `ui`: Export button. ✅
-5. Round-trip test. ✅
+1. `doc`: `Shader`, `ShaderParams` on `TextureSet`. ✅
+2. `engine`: `texture_set.set_shader`, `shader.set`, `viewport.set_vignette/bloom`. ✅
+3. `render`: material override (per-set shader params) + a post-effects pass (vignette + bloom). ✅
+4. `ui`: shader combo + params; Post sliders. ✅
+5. Anchors, layer instancing, physical size, distinct shading models. ⏳
 
 Acceptance: `cargo run -p substancecraft` opens the window, imports a sample glTF/OBJ, orbits with a
 real camera, PBR-shades it with IBL and tone mapping, switches display modes — all via commands; the

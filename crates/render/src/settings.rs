@@ -84,6 +84,10 @@ pub struct RenderSettings {
     pub show_background: bool,
     /// Whether to draw only the active texture set's geometry.
     pub isolate_active_set: bool,
+    /// Post-effect vignette strength in `0..=1`.
+    pub vignette: f32,
+    /// Post-effect bloom strength in `0..=1`.
+    pub bloom: f32,
 }
 
 impl Default for RenderSettings {
@@ -100,6 +104,8 @@ impl Default for RenderSettings {
             show_grid: true,
             show_background: true,
             isolate_active_set: false,
+            vignette: 0.0,
+            bloom: 0.0,
         }
     }
 }

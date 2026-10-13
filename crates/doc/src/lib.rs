@@ -11,10 +11,12 @@ use substancecraft_geom::Mesh;
 pub mod layers;
 pub mod procedural;
 pub mod project;
+pub mod shader;
 
 pub use layers::{BlendMode, Layer, LayerKind, LayerStack, Mask};
 pub use procedural::{Effect, Filter, Generator};
 pub use project::{Channel, Project, TextureSet, UvTile};
+pub use shader::{Shader, ShaderParams};
 
 /// A PBR material description. At M1 this is the flat metal/rough parameter set; it grows into
 /// the full channel/shader description in later milestones.

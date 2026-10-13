@@ -15,9 +15,10 @@ normal, roughness, metalness, UV checker, wireframe); ground grid and sky/enviro
 wgpu viewport hosted in egui; offscreen snapshot plus live `ui.screenshot`; pinned CC0 assets via
 `cargo xtask assets`.
 
-**M8 — Export: complete.** Channel export (PNG 8/16-bit, TGA, EXR), export presets
-(OpenPBR/glTF/Unreal/Unity/Spec-Gloss), channel packing, naming templates and UDIM naming, a round-trip
-test, and an Export button. 70 commands.
+**M9 — Workflow depth: partial.** Per-set shader selection (OpenPBR / Metal-Rough / Spec-Gloss) with
+editable metallic/roughness/specular/tint feeding the viewport, and post-effects (vignette + bloom) as
+a post-process pass. Anchors, layer instancing, physical size and distinct OpenPBR/spec-gloss shading
+remain (see `docs/gaps.md`). 74 commands.
 
 ## Milestones
 
@@ -32,7 +33,8 @@ test, and an Export button. 70 commands.
 | **M6** | Procedural content | generators, filters, effect layers, shelf ✅ |
 | **M7** | Baking | BVH mesh-map bakers, high-poly import, bake panel + log ✅ |
 | **M8** | Export | formats, presets, packing, naming, UDIM, round-trip ✅ |
-| M9 | Workflow depth | OpenPBR/ASM shaders, shader params, post-effects, anchors, instancing |
+| **M9** | Workflow depth | per-set shaders + params, post-effects ◐ (anchors/instancing pending) |
+| M10 | Project lifecycle | `.sccraft` save/load, templates, autosave/recovery |
 | M3 | Layer stack | doc model, fill/mask/group/blend, CPU oracle + GPU compositor, undo |
 | M4 | Painting | brush engine, tablet pressure, projection painting |
 | M5 | Painting tools | projection, polyfill, smudge, clone, particle/physics brushes |

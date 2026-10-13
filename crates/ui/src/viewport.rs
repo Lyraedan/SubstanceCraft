@@ -231,13 +231,15 @@ impl Viewport {
                     let material =
                         set.materials.first().and_then(|id| guard.project().scene.materials.get(*id as usize)).cloned().unwrap_or_default();
                     let image = substancecraft_compose::evaluate_base_color(&set, &material, COMPOSITE_RESOLUTION, COMPOSITE_RESOLUTION);
-                    (image, set.materials.clone())
+                    let params = set.shader_params;
+                    (image, set.materials.clone(), params.base_color_tint, params.metallic, params.roughness)
                 })
             };
-            if let Some((image, materials)) = composite
+            if let Some((image, materials, tint, metallic, roughness)) = composite
                 && let Some(renderer) = self.renderer.as_mut()
             {
                 renderer.set_base_color_texture(device, queue, &image, &materials);
+                renderer.set_material_override(queue, Some((materials, tint, metallic, roughness)));
             }
             self.applied_base_revision = Some(revision);
         }
