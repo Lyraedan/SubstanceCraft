@@ -10,6 +10,8 @@ workflow.
 - **Agent-drivable** — every action is a command; a JSON control channel and an MCP server drive the
   running app.
 
+  <img width="2880" height="1556" alt="m12_render2" src="https://github.com/user-attachments/assets/2e83db2e-522e-4b59-a6eb-de25d6359fd4" />
+
 ## Features
 
 - **Viewport** — glTF/OBJ import, orbit/pan/dolly/focus camera (perspective + orthographic), metal/
