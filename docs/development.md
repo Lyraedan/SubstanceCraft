@@ -12,11 +12,21 @@
 ## Build and run
 
 ```sh
-cargo run -p substancecraft              # the desktop app
-cargo run -p substancecraft-ui --example ...   # offscreen renders (added in M1)
-cargo run -p substancecraft-cli -- commands
+cargo run -p substancecraft                        # the desktop app
+./Build/substancecraft --control 127.0.0.1:8765    # app + JSON control server
+cargo run -p substancecraft-cli -- commands        # list command ids
 cargo run -p substancecraft-cli -- run app.version
-./Build/substancecraft --control 127.0.0.1:8765   # app with the JSON control server
+cargo run -p substancecraft-cli -- script run.jsonl
+cargo run -p substancecraft-cli -- mcp             # MCP over stdio
+```
+
+Offscreen render to a PNG (no window, no focus stealing):
+
+```sh
+# snapshot [output] [display-mode] [projection] [env: synthetic|<path>] [model: sphere|torus|<path>]
+cargo run -p substancecraft-ui --example snapshot -- Build/shot.png base_color perspective
+cargo run -p substancecraft-ui --example snapshot -- Build/hero.png base_color perspective \
+    corpus/hdri/studio_small_09_1k.hdr corpus/models/Avocado.glb
 ```
 
 ## The gate
@@ -34,14 +44,29 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+## Performance and scorecard
+
+```sh
+cargo xtask perf        # time scenarios, compare perf/budgets.toml, write perf/baseline.json
+cargo xtask scorecard   # regenerate docs/scorecard.md from the tree + baseline
+```
+
+Run `perf` from a release build for representative numbers:
+`cargo run --release -p xtask -- perf`.
+
+## Test assets
+
+`cargo xtask assets` downloads pinned, SHA-256-verified CC0 assets (a Poly Haven HDRI and the Khronos
+Avocado glTF) into the gitignored `corpus/`. Nothing there is committed.
+
 ## Packaging
 
 ```sh
 cargo xtask build     # cargo build --release, then copy the apps into Build/
 ```
 
-`Build/` is gitignored and holds only the finished applications. Signed per-platform packages arrive
-with the release milestone (`docs/releasing.md`).
+`Build/` is gitignored and holds only the finished applications. Signed per-platform packages are not
+produced yet (see `docs/releasing.md`).
 
 ## Faster loops
 
@@ -52,6 +77,7 @@ with the release milestone (`docs/releasing.md`).
 ## Debugging
 
 - `cargo xtask stats` prints crate, source and registered-command counts.
-- The control channel (`docs/control-protocol.md`) lists and runs commands and later takes
-  screenshots, so the UI can be driven and inspected without a human at the keyboard.
+- The control channel (`docs/control-protocol.md`) lists and runs commands, reports state
+  (`session.info`, `scene.info`, `viewport.state`) and takes screenshots, so the UI can be driven and
+  inspected without a human at the keyboard.
 - `RUST_BACKTRACE=1` for a backtrace on an unexpected error (which should never be a panic).

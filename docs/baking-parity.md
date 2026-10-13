@@ -1,32 +1,35 @@
 # Baking parity checklist
 
-Substance-3D-Painter-comparable mesh-map baking. Milestone M7.
+Substance-3D-Painter-comparable mesh-map baking. Landed in M7.
+
+_Last reviewed: 2026-10-13 (M12)._
 
 ## Mesh maps
 
-- [ ] Tangent-space normal (from high-poly).
-- [ ] Ambient occlusion.
-- [ ] Curvature.
-- [ ] Position.
-- [ ] Thickness.
-- [ ] World-space normal.
-- [ ] Material ID / colour ID.
+- [x] Tangent-space normal (from a high-poly mesh).
+- [x] Ambient occlusion (cosine-hemisphere sampling).
+- [x] Curvature (normal-field divergence).
+- [x] Position.
+- [x] Thickness.
+- [x] World-space normal.
+- [x] Material ID / colour ID.
 
 ## Cage & projection
 
-- [ ] Implicit (automatic) cage generation.
-- [ ] Custom cage mesh import.
-- [ ] Distance-based matching (max frontal / rear distance).
-- [ ] Skew correction (M9).
+- [ ] Explicit / implicit cage mesh export and editing.
+- [ ] Distance-based matching (max frontal / rear distance) as a separate setting.
+- [ ] Skew correction.
 
 ## Workflow
 
-- [ ] Baking mode UI (baker list, settings, log).
+- [x] Bake panel: resolution, AO samples, high-poly import, run, per-map preview and PNG save.
+- [x] A bake log with timing and notes.
 - [ ] Per-texture-set baker configuration and sync.
-- [ ] Auto-rebake.
-- [ ] Mesh-load state and progress.
+- [ ] Auto-rebake and progress.
 
 ## Correctness
 
-- [ ] CPU and GPU bakers agree (oracle test).
-- [ ] Reproducible at several resolutions.
+- [x] BVH ray queries validated against brute force.
+- [x] Reproducible (seeded AO); bakes at 128² and 256² verified.
+- [ ] Baked maps wired into generators/masks.
+- [ ] A GPU baker (CPU today).

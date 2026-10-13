@@ -1,29 +1,34 @@
 # Export parity checklist
 
-Substance-3D-Painter-comparable texture export. Milestone M8.
+Substance-3D-Painter-comparable texture export. Landed in M8.
+
+_Last reviewed: 2026-10-13 (M12)._
 
 ## Channels & formats
 
-- [ ] Per-channel export (base colour, roughness, metalness, normal, height, AO, …).
-- [ ] 8/16-bit PNG and TGA; 16/32-bit EXR.
-- [ ] Channel packing into combined maps.
-- [ ] sRGB / linear assignment per channel.
+- [x] Per-channel export (base colour, metallic, roughness, normal, height, AO, emissive — where enabled).
+- [x] PNG 8-bit, PNG 16-bit, TGA 8-bit and EXR 32-bit float.
+- [x] Channel packing into combined maps (any channel into R/G/B/A).
+- [x] Linear data written without gamma (data maps round-trip exactly).
+- [ ] Explicit sRGB/linear assignment per channel.
 
 ## Presets & naming
 
-- [ ] Built-in export presets (Unreal, Unity, glTF, OpenPBR, spec/gloss).
-- [ ] Custom presets.
-- [ ] Naming conventions (`$textureSet_$channel`).
+- [x] Built-in presets: OpenPBR, glTF, Unreal (ORM), Unity (mask), Spec/Gloss.
+- [ ] Custom presets saved to disk.
+- [x] Naming templates (`$textureSet`, `$channel`, `$udim`).
 - [ ] Output templates and subfolders.
 
 ## Scope
 
-- [ ] UDIM / UV-tile export.
-- [ ] Resolution up to 8K.
-- [ ] Export flattened layers/masks/groups directly.
-- [ ] OpenPBR material export via USD (M9).
+- [x] UDIM naming (`$udim`, one file per tile).
+- [ ] Per-tile UDIM content (painting is not UDIM-aware yet).
+- [x] Resolution up to 8K (clamped 16..8192).
+- [ ] Flattened layers/masks/groups exported directly.
+- [ ] OpenPBR material export via USD.
 
 ## Correctness
 
-- [ ] Exported maps re-import to identical values (round-trip test).
+- [x] Exported maps re-import to identical values (round-trip test, within 1/255).
+- [x] ORM packing test.
 - [ ] CPU oracle and GPU compositor agree on flattened output.

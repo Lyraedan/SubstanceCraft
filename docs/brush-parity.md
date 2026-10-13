@@ -1,42 +1,39 @@
 # Brush and painting parity checklist
 
-Substance-3D-Painter-comparable painting. Milestones M4–M6.
+Substance-3D-Painter-comparable painting. Landed in M4–M5.
+
+_Last reviewed: 2026-10-13 (M12)._
 
 ## Brush engine
 
-- [ ] Dabs with spacing, size, flow and opacity.
-- [ ] Pressure (size, flow, opacity) and tilt.
-- [ ] Hardness/falloff curves.
-- [ ] Jitter, scatter, orientation.
-- [ ] Tablet input (pressure/tilt) through `substancecraft-tablet`.
-
-## Painterly controls
-
-- [ ] Stroke smoothing and stabiliser.
-- [ ] Symmetry (mirror planes, radial).
-- [ ] Lazy mouse / streamline.
+- [x] Dabs with spacing, size, flow and opacity.
+- [x] Pressure scaling (size and opacity) — mouse reports pressure 1.0.
+- [ ] Tilt and native pen pressure through `substancecraft-tablet`.
+- [x] Hardness/falloff curves.
+- [x] Jitter (particle-like scatter).
+- [x] Symmetry (horizontal, vertical, both).
+- [x] Screen-space sizing (texels-per-screen-pixel from the hit triangle's UV density).
 
 ## Tools
 
-- [ ] Brush, eraser.
-- [ ] Projection tool.
-- [ ] Polygon fill.
-- [ ] Smudge.
-- [ ] Clone.
-- [ ] Particle and physics brushes (M5).
+- [x] Brush, eraser.
+- [x] Smudge.
+- [x] Clone (with offset).
+- [x] Polygon fill (UV-island `polyfill`).
+- [ ] Projection tool (paint an image through a placed plane).
+- [ ] Particle and physics brushes.
 
-## Presets
+## Painting model
+
+- [x] Projection painting through BVH raycasts onto the mesh's UVs.
+- [x] Paints into the active layer's texture target; one undo step per stroke.
+- [x] Active-layer target (`layer.select`) with a paint-layer fallback.
+- [x] Live composited base colour in the viewport.
+- [ ] UDIM-aware painting across tiles.
+- [ ] GPU/streamed painting.
+
+## Presets and colour
 
 - [ ] Save/load brush presets.
-- [ ] Create custom presets from the shelf.
-
-## Colour
-
 - [ ] Colour picker (viewport pick, swatches, palettes).
-- [ ] Grayscale mask painting with value picker.
-
-## Projection
-
-- [ ] 3D, planar, cylindrical and spherical projection.
-- [ ] UV projection.
-- [ ] Warp to geometry (M9).
+- [x] Brush colour and symmetry are commands and persist with the project.

@@ -33,6 +33,19 @@ third-party asset keeps its license file and gets an `ATTRIBUTION.md` row in the
 Every change ships tests. Format codecs use round-trip, synthetic-generator and fuzz tests. The GPU
 compositor is validated against the CPU oracle. Commands get a graceful-failure test.
 
+## Before you finish
+
+```sh
+cargo xtask ci        # layers + fmt --check + clippy -D warnings + tests
+cargo xtask perf      # if you touched a hot path (compose, bake, format)
+cargo xtask scorecard # if you changed the tree or moved a perf number
+```
+
+New behaviour is a command (a new `crates/engine/src/<area>_cmds.rs` module) so the UI, CLI, control
+channel and MCP server all pick it up automatically. The existing command modules are `scene_cmds`,
+`project_cmds`, `texture_set_cmds`, `layer_cmds`, `paint_cmds`, `bake_cmds`, `export_cmds`,
+`viewport_cmds`, `info_cmds` and `ui_cmds`.
+
 ## Never crash
 
 No `unwrap`/`expect`/`panic`/`unsafe` in non-test code (see `AGENTS.md`). Handle lock poisoning with
