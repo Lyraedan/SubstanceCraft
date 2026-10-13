@@ -10,6 +10,8 @@ use substancecraft_paint::{BrushSettings, StrokeState, ToolKind, clone_stamp, er
 use substancecraft_raster::RasterImage;
 use substancecraft_render::{OrbitCamera, RenderSettings};
 
+use crate::workspace::{Panel, RightTab, Workspace};
+
 /// The maximum number of undo steps kept.
 const MAX_UNDO: usize = 64;
 
@@ -88,6 +90,8 @@ pub struct Session {
     file_path: Option<PathBuf>,
     /// Whether there are unsaved document changes.
     dirty: bool,
+    /// Workspace layout view state (panel visibility and dock selection).
+    workspace: Workspace,
 }
 
 impl Default for Session {
@@ -127,6 +131,7 @@ impl Session {
             bake_revision: 1,
             file_path: None,
             dirty: false,
+            workspace: Workspace::default(),
         }
     }
 
@@ -810,6 +815,40 @@ impl Session {
         self.dirty = true;
     }
 
+    /// The workspace layout view state.
+    pub fn workspace(&self) -> Workspace {
+        self.workspace
+    }
+
+    /// Replace the workspace layout view state.
+    pub fn set_workspace(&mut self, workspace: Workspace) {
+        self.workspace = workspace;
+    }
+
+    /// Show or hide a panel.
+    pub fn set_panel(&mut self, panel: Panel, visible: bool) {
+        self.workspace.set_visible(panel, visible);
+    }
+
+    /// Toggle a panel; returns its new visibility.
+    pub fn toggle_panel(&mut self, panel: Panel) -> bool {
+        let visible = !self.workspace.is_visible(panel);
+        self.workspace.set_visible(panel, visible);
+        visible
+    }
+
+    /// Select the right-middle dock tab.
+    pub fn set_right_tab(&mut self, tab: RightTab) {
+        self.workspace.right_tab = tab;
+    }
+
+    /// An estimate of the resident pixel memory (paint images + baked maps), in bytes.
+    pub fn cache_bytes(&self) -> u64 {
+        let paint: u64 = self.project.texture_sets.iter().map(|set| layer_bytes(&set.layers)).sum();
+        let baked: u64 = self.baked.iter().map(|(_, image)| u64::from(image.width) * u64::from(image.height) * 16).sum();
+        paint.saturating_add(baked)
+    }
+
     /// Write a copy of the project to `path` without changing the current file path or dirty flag.
     pub fn write_copy(&self, path: &Path) -> Result<(), String> {
         substancecraft_format::save(&self.project, path).map_err(|err| err.to_string())
@@ -872,6 +911,21 @@ fn uv_to_pixels(u: f32, v: f32, width: u32, height: u32) -> [f32; 2] {
     [u.rem_euclid(1.0) * width as f32, v.rem_euclid(1.0) * height as f32]
 }
 
+/// The resident byte size of the paint images in a layer stack (recursing into groups).
+fn layer_bytes(stack: &LayerStack) -> u64 {
+    let mut total = 0u64;
+    for layer in &stack.layers {
+        match &layer.kind {
+            LayerKind::Paint { image: Some(image) } => {
+                total = total.saturating_add(u64::from(image.width).saturating_mul(u64::from(image.height)).saturating_mul(16));
+            }
+            LayerKind::Group { children } => total = total.saturating_add(layer_bytes(children)),
+            _ => {}
+        }
+    }
+    total
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -931,5 +985,26 @@ mod tests {
         let mut session = Session::new("test");
         session.remove_uv_tile(UvTile::DEFAULT);
         assert_eq!(session.texture_sets()[0].uv_tiles.len(), 1);
+    }
+
+    #[test]
+    fn workspace_panels_toggle_and_tabs_select() {
+        let mut session = Session::new("test");
+        assert!(session.workspace().is_visible(Panel::Assets));
+        assert!(!session.toggle_panel(Panel::Assets));
+        assert!(!session.workspace().is_visible(Panel::Assets));
+        session.set_panel(Panel::Assets, true);
+        assert!(session.workspace().is_visible(Panel::Assets));
+        session.set_right_tab(RightTab::Settings);
+        assert_eq!(session.workspace().right_tab, RightTab::Settings);
+    }
+
+    #[test]
+    fn cache_bytes_counts_paint_images() {
+        let mut session = Session::new("test");
+        assert_eq!(session.cache_bytes(), 0);
+        session.begin_stroke(0.5, 0.5, 1.0, 0.0);
+        session.end_stroke();
+        assert!(session.cache_bytes() > 0);
     }
 }

@@ -1,11 +1,13 @@
 //! Serializable UI state.
 //!
 //! View state lives here (never in the document) so the shell can persist and restore its
-//! layout. It mirrors the Substance-3D-Painter-style workspace: a menu bar, a contextual tool
-//! properties bar, a left tool rail, a right dock (texture set list plus a tabbed
-//! layers/settings section), a bottom assets shelf and a status bar.
+//! layout. The runtime source of truth for panel visibility and the dock selection is the
+//! session's `Workspace` (so the control channel can drive it); this type is the on-disk form.
 
 use serde::{Deserialize, Serialize};
+use substancecraft_engine::workspace::Workspace;
+
+pub use substancecraft_engine::workspace::RightTab;
 
 /// Which theme to apply.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -14,33 +16,27 @@ pub enum ThemeChoice {
     /// The default dark studio theme.
     #[default]
     Dark,
+    /// The neutral studio-gray theme.
+    Gray,
 }
 
-/// Which section the right-middle dock shows.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RightTab {
-    /// The layer stack.
-    #[default]
-    Layers,
-    /// The active texture set's channels, resolution and shader.
-    Settings,
-}
+impl ThemeChoice {
+    /// Every theme, in menu order.
+    pub const ALL: [ThemeChoice; 2] = [ThemeChoice::Dark, ThemeChoice::Gray];
 
-impl RightTab {
-    /// A stable id for state and commands.
-    pub fn id(self) -> &'static str {
+    /// A human-readable label.
+    pub fn label(self) -> &'static str {
         match self {
-            RightTab::Layers => "layers",
-            RightTab::Settings => "settings",
+            ThemeChoice::Dark => "Dark",
+            ThemeChoice::Gray => "Gray",
         }
     }
 
-    /// The tab label.
-    pub fn label(self) -> &'static str {
+    /// The palette for this theme.
+    pub fn tokens(self) -> crate::theme::Tokens {
         match self {
-            RightTab::Layers => "Layers",
-            RightTab::Settings => "Texture Set Settings",
+            ThemeChoice::Dark => crate::theme::Tokens::DARK,
+            ThemeChoice::Gray => crate::theme::Tokens::GRAY,
         }
     }
 }
@@ -79,6 +75,30 @@ impl Default for UiState {
     }
 }
 
+impl UiState {
+    /// The persisted layout as session workspace state.
+    pub fn to_workspace(&self) -> Workspace {
+        Workspace {
+            texture_sets: self.show_texture_sets,
+            layers: self.show_layer_stack,
+            assets: self.show_shelf,
+            tool_properties: self.show_tool_properties,
+            tool_rail: self.show_tool_rail,
+            right_tab: self.right_tab,
+        }
+    }
+
+    /// Update the persisted layout from session workspace state.
+    pub fn apply_workspace(&mut self, workspace: &Workspace) {
+        self.show_texture_sets = workspace.texture_sets;
+        self.show_layer_stack = workspace.layers;
+        self.show_shelf = workspace.assets;
+        self.show_tool_properties = workspace.tool_properties;
+        self.show_tool_rail = workspace.tool_rail;
+        self.right_tab = workspace.right_tab;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,6 +126,16 @@ mod tests {
         assert!(!back.show_shelf);
         assert!(back.show_tool_properties && back.show_tool_rail);
         assert_eq!(back.right_tab, RightTab::Layers);
+    }
+
+    #[test]
+    fn workspace_round_trips_through_ui_state() {
+        let mut state = UiState::default();
+        let mut workspace = state.to_workspace();
+        workspace.set_visible(substancecraft_engine::workspace::Panel::Assets, false);
+        workspace.right_tab = RightTab::Settings;
+        state.apply_workspace(&workspace);
+        assert_eq!(state.to_workspace(), workspace);
     }
 
     #[test]

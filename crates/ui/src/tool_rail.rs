@@ -21,17 +21,17 @@ pub(crate) fn tool_rail(app: &mut StudioApp, ui: &mut egui::Ui) {
 
     ui.vertical_centered(|ui| {
         ui.add_space(4.0);
-        if rail_button(ui, icons::glyph("paint"), painting, "Paint (left-drag paints)") {
+        if rail_button(ui, "paint", painting, "Paint (left-drag paints)") {
             set_view = Some(ViewportTool::Paint);
         }
-        if rail_button(ui, icons::glyph("orbit"), app.tool == ViewportTool::Orbit, "Orbit camera (left-drag orbits)") {
+        if rail_button(ui, "orbit", app.tool == ViewportTool::Orbit, "Orbit camera (left-drag orbits)") {
             set_view = Some(ViewportTool::Orbit);
         }
         ui.add_space(4.0);
         ui.separator();
         for tool in ToolKind::ALL {
             let selected = painting && tool == active_tool;
-            if rail_button(ui, icons::glyph(tool.id()), selected, tool.label()) {
+            if rail_button(ui, tool.id(), selected, tool.label()) {
                 select_tool = Some(tool);
             }
         }
@@ -47,7 +47,7 @@ pub(crate) fn tool_rail(app: &mut StudioApp, ui: &mut egui::Ui) {
     }
 }
 
-/// A square rail button with a tooltip.
-fn rail_button(ui: &mut egui::Ui, glyph: &str, selected: bool, tooltip: &str) -> bool {
-    ui.add_sized([30.0, 30.0], egui::Button::new(egui::RichText::new(glyph).size(16.0)).selected(selected)).on_hover_text(tooltip).clicked()
+/// A square rail button showing an icon, with a tooltip.
+fn rail_button(ui: &mut egui::Ui, icon: &str, selected: bool, tooltip: &str) -> bool {
+    ui.add_sized([30.0, 30.0], egui::Button::image(icons::image(icon, 18.0)).selected(selected)).on_hover_text(tooltip).clicked()
 }

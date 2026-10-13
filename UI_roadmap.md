@@ -28,10 +28,12 @@ Status legend: ✅ done · ◐ in progress · ☐ not started.
 | Right: Texture Set List | `panels::texture_set_list_panel` (tree) | ✅ |
 | Right: Layers / Texture Set Settings tabs | `panels::right_section` | ✅ |
 | Right: Properties — Paint | `panels::properties_panel` | ✅ |
-| Bottom: Assets shelf | `panels::assets_panel` | ◐ |
-| Viewport overlays | `ui::viewport` (material dropdown; hints/gizmo pending) | ◐ |
-| Status bar | `panels::status_bar` (version; cache usage pending) | ◐ |
-| Icons | `ui::icons` placeholder glyphs → original SVG catalog | ◐ |
+| Bottom: Assets shelf | `panels::assets_panel` | ✅ |
+| Viewport overlays | `ui::viewport` (material dropdown, shortcut hints, axis gizmo) | ✅ |
+| Status bar | `panels::status_bar` (message, cache usage, version) | ✅ |
+| Icons | `ui::icons` original SVG catalog (`docs/brand/icons`) | ✅ |
+
+Progress: all five phases done. See [`UI_devlog.md`](UI_devlog.md).
 
 ## Phases
 
@@ -54,20 +56,27 @@ Status legend: ✅ done · ◐ in progress · ☐ not started.
 - [ ] Per-tile name/resolution editing (needs `doc` fields + commands).
 - [ ] Collapsible sets (expand any set, not just the active one).
 
-### Phase 3 — Assets shelf ☐
-- [ ] Library dropdown (project/substance/…).
-- [ ] Icon filter row and a thumbnail grid (material spheres, generators, filters, brushes).
-- [ ] Search spans all asset kinds.
+### Phase 3 — Assets shelf ✅
+- [x] Library dropdown (`All Libraries` / `Project`; Project filters generators/filters to those used
+      in the active layer stack).
+- [x] Icon filter row (All/Materials/Brushes/Generators/Filters/Bake/Post) and a thumbnail grid.
+- [x] Thumbnails: real procedural generator previews (`substancecraft-material`, cached), brush dabs,
+      filter gradients, the active material swatch and a bake glyph.
+- [x] Search spans all asset kinds; click-to-add dispatches the same commands as before.
+- [ ] Material *presets* (material spheres beyond the active surface) and brush presets.
 
-### Phase 4 — Overlays & chrome ☐
-- [ ] Viewport shortcut-hint overlay (bottom-left) and axis gizmo.
-- [ ] Cache-usage readout in the status bar.
-- [ ] Panel show/hide commands so the control channel can drive the workspace.
+### Phase 4 — Overlays & chrome ✅
+- [x] Viewport shortcut-hint overlay (bottom-left) and axis gizmo (bottom-right).
+- [x] Cache-usage readout in the status bar (`Session::cache_bytes`, % of a 4 GiB budget).
+- [x] Panel show/hide + dock-tab commands: `ui.panel_state`, `ui.set_panel`, `ui.toggle_panel`,
+      `ui.set_right_tab`. Workspace state lives on the `Session` so the control channel/MCP drive it;
+      the shell persists it to prefs and the `Window` menu dispatches the same commands.
 
-### Phase 5 — Icons & theme ☐
-- [ ] Original monochrome SVG catalog in `docs/brand/`, wired through `craft_ui::icons::SvgIconSet`.
-- [ ] Optional neutral studio-gray token set.
-- [ ] `ATTRIBUTION.md` rows for any third-party assets.
+### Phase 5 — Icons & theme ✅
+- [x] Original monochrome SVG catalog in `docs/brand/icons/` (21 drawings, aliased to 23 names),
+      wired through `craft_ui::icons::SvgIconSet` + `egui_extras`' SVG loader.
+- [x] Neutral studio-gray token set (`Tokens::GRAY`, amber accent) selectable from `Window > Theme`.
+- [x] No third-party assets: the icons are original, so no `ATTRIBUTION.md` rows are needed.
 
 ## Guardrails
 - Never crash: the crate denies `unwrap/expect/panic/unsafe`; menu/tab code tolerates empty input.

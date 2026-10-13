@@ -15,8 +15,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use substancecraft_engine::command::{CommandError, CommandOutcome, CommandRegistry};
 use substancecraft_engine::session::{SharedSession, lock};
+use substancecraft_engine::workspace::Workspace;
 
-use crate::state::UiState;
+use crate::state::{ThemeChoice, UiState};
 use crate::theme::Tokens;
 use crate::viewport::{Viewport, ViewportAction, ViewportTool};
 use crate::{menu, tool_rail, toolbar};
@@ -50,20 +51,24 @@ pub struct StudioApp {
     pub(crate) tool: ViewportTool,
     pub(crate) asset_search: String,
     pub(crate) asset_filter: usize,
+    pub(crate) asset_library: usize,
+    pub(crate) generator_thumbs: std::collections::HashMap<&'static str, egui::TextureHandle>,
     window_title: String,
     last_autosave: Instant,
+    last_workspace: Workspace,
 }
 
 impl StudioApp {
     /// Build the app for eframe, installing the theme and app menu.
     pub fn new(cc: &eframe::CreationContext<'_>, registry: Arc<CommandRegistry>, session: SharedSession) -> Self {
-        Tokens::DARK.apply(&cc.egui_ctx);
+        crate::icons::install_loaders(&cc.egui_ctx);
 
         if let Err(err) = craft_quit::install_app_menu(&cc.egui_ctx, "SubstanceCraft") {
             eprintln!("warning: could not install the macOS application menu: {err}");
         }
 
         let (prefs, _report) = SettingsStore::<Prefs>::open(Location::Auto);
+        prefs.get().ui.theme.tokens().apply(&cc.egui_ctx);
 
         let mut app = Self {
             registry,
@@ -80,9 +85,16 @@ impl StudioApp {
             tool: ViewportTool::default(),
             asset_search: String::new(),
             asset_filter: 0,
+            asset_library: 0,
+            generator_thumbs: std::collections::HashMap::new(),
             window_title: String::new(),
             last_autosave: Instant::now(),
+            last_workspace: Workspace::default(),
         };
+        // The session's workspace is the runtime source of truth; seed it from the saved prefs.
+        let workspace = app.ui_state().to_workspace();
+        lock(&app.session).set_workspace(workspace);
+        app.last_workspace = workspace;
         app.report(app.dispatch("scene.load_default", &Value::Null));
         app
     }
@@ -109,6 +121,23 @@ impl StudioApp {
     /// Mutate the persisted view state.
     pub(crate) fn update_ui(&mut self, edit: impl FnOnce(&mut UiState)) {
         self.prefs.update(|prefs| edit(&mut prefs.ui));
+    }
+
+    /// Dispatch a command and fold the result into the status line.
+    pub(crate) fn dispatch_and_report(&mut self, id: &str, params: &Value) {
+        let outcome = self.dispatch(id, params);
+        self.report(outcome);
+    }
+
+    /// Switch the theme and apply it immediately.
+    pub(crate) fn set_theme(&mut self, ctx: &egui::Context, choice: ThemeChoice) {
+        self.update_ui(|state| state.theme = choice);
+        choice.tokens().apply(ctx);
+    }
+
+    /// The currently selected theme.
+    pub(crate) fn theme(&self) -> ThemeChoice {
+        self.ui_state().theme
     }
 
     /// Dispatch a file command with a chosen path.
@@ -251,43 +280,50 @@ impl eframe::App for StudioApp {
             }
         }
 
+        // Persist workspace changes (panel toggles, dock tab) made via commands or the menu.
+        let workspace = lock(&self.session).workspace();
+        if workspace != self.last_workspace {
+            self.last_workspace = workspace;
+            self.update_ui(|ui| ui.apply_workspace(&workspace));
+        }
+
         craft_quit::on_close_request(ctx);
         // Poll session state so control-channel-driven changes appear without user input.
         ctx.request_repaint_after(std::time::Duration::from_millis(200));
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        let state = self.ui_state();
+        let workspace = lock(&self.session).workspace();
 
         // Top chrome: the menu bar, then the contextual tool properties bar.
         egui::Panel::top("sc.menu")
             .frame(egui::Frame::NONE.fill(Tokens::DARK.menu_bg).inner_margin(egui::Margin::symmetric(6, 2)))
             .show(ui, |ui| menu::menu_bar(self, ui));
-        if state.show_tool_properties {
+        if workspace.tool_properties {
             egui::Panel::top("sc.tools").show(ui, |ui| toolbar::tool_properties_bar(self, ui));
         }
 
         // Bottom chrome: the status bar, then the assets shelf (spans the full width).
         egui::Panel::bottom("sc.status").show(ui, |ui| self.status_bar(ui));
-        if state.show_shelf {
+        if workspace.assets {
             egui::Panel::bottom("sc.assets").default_size(220.0).min_size(120.0).resizable(true).show(ui, |ui| self.assets_panel(ui));
         }
 
         // Side chrome, above the shelf.
-        if state.show_tool_rail {
+        if workspace.tool_rail {
             egui::Panel::left("sc.rail")
                 .exact_size(40.0)
                 .resizable(false)
                 .frame(egui::Frame::NONE.fill(Tokens::DARK.rail_bg).inner_margin(egui::Margin::symmetric(2, 4)))
                 .show(ui, |ui| tool_rail::tool_rail(self, ui));
         }
-        if state.show_texture_sets || state.show_layer_stack {
+        if workspace.texture_sets || workspace.layers {
             egui::Panel::right("sc.right").default_size(300.0).min_size(220.0).resizable(true).show(ui, |ui| {
-                if state.show_texture_sets {
+                if workspace.texture_sets {
                     self.texture_set_list_panel(ui);
                 }
-                if state.show_layer_stack {
-                    if state.show_texture_sets {
+                if workspace.layers {
+                    if workspace.texture_sets {
                         ui.separator();
                     }
                     self.right_section(ui);

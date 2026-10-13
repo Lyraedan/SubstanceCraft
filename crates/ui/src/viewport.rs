@@ -5,7 +5,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use substancecraft_engine::session::{Session, SharedSession, lock};
-use substancecraft_geom::glam::Vec2;
+use substancecraft_geom::glam::{Mat3, Vec2, Vec3};
 use substancecraft_paint::ToolKind;
 use substancecraft_render::{ToneMap, ViewportRenderer};
 
@@ -64,6 +64,12 @@ pub enum ViewportAction {
 
 /// The composite resolution uploaded to the viewport.
 const COMPOSITE_RESOLUTION: u32 = 512;
+
+/// Viewport shortcut hints for the paint mode.
+const PAINT_HINTS: &[&str] = &["Left-drag   Paint", "Right/Middle-drag   Pan", "Scroll   Zoom", "F   Frame all"];
+
+/// Viewport shortcut hints for the orbit mode.
+const ORBIT_HINTS: &[&str] = &["Left-drag   Orbit", "Right/Middle-drag   Pan", "Scroll   Zoom", "F   Frame all"];
 
 /// The viewport panel state.
 #[derive(Default)]
@@ -134,8 +140,8 @@ impl Viewport {
         ui.painter().image(texture_id, rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
         ui.painter().rect_stroke(rect, egui::CornerRadius::ZERO, egui::Stroke::new(1.0, crate::theme::Tokens::DARK.border), egui::StrokeKind::Inside);
         ui.painter().text(
-            rect.left_bottom() + egui::vec2(6.0, -6.0),
-            egui::Align2::LEFT_BOTTOM,
+            rect.left_top() + egui::vec2(6.0, 6.0),
+            egui::Align2::LEFT_TOP,
             format!("{}×{}  ·  {}", self.uploaded_size.0, self.uploaded_size.1, tool.id()),
             egui::FontId::monospace(11.0),
             crate::theme::Tokens::DARK.text_dim,
@@ -168,6 +174,11 @@ impl Viewport {
                 action = Some(ViewportAction::SelectTextureSet { index });
             }
         }
+
+        // Shortcut hints (bottom-left) and the axis gizmo (bottom-right).
+        let hints = if tool == ViewportTool::Paint { PAINT_HINTS } else { ORBIT_HINTS };
+        draw_hints(ui, rect, hints);
+        draw_axis_gizmo(ui, rect, session);
 
         action
     }
@@ -290,6 +301,42 @@ impl Viewport {
             }
             self.applied_base_revision = Some(revision);
         }
+    }
+}
+
+/// Draw the bottom-left shortcut hints over a translucent panel.
+fn draw_hints(ui: &egui::Ui, rect: egui::Rect, hints: &[&str]) {
+    let font = egui::FontId::monospace(11.0);
+    let line_height = 15.0;
+    let pad = 6.0;
+    let width = 178.0;
+    let height = pad * 2.0 + line_height * hints.len() as f32;
+    let origin = egui::pos2(rect.left() + 8.0, (rect.bottom() - 8.0 - height).max(rect.top() + 8.0));
+    let background = egui::Rect::from_min_size(origin, egui::vec2(width, height));
+    let panel = crate::theme::Tokens::DARK.panel_bg;
+    ui.painter().rect_filled(background, egui::CornerRadius::same(3), egui::Color32::from_rgba_unmultiplied(panel.r(), panel.g(), panel.b(), 205));
+    let mut y = origin.y + pad;
+    for line in hints {
+        ui.painter().text(egui::pos2(origin.x + pad, y), egui::Align2::LEFT_TOP, *line, font.clone(), crate::theme::Tokens::DARK.text);
+        y += line_height;
+    }
+}
+
+/// Draw a small orientation gizmo showing the world axes in the camera's frame.
+fn draw_axis_gizmo(ui: &egui::Ui, rect: egui::Rect, session: &SharedSession) {
+    let axes = {
+        let session = lock(session);
+        let rotation = Mat3::from_mat4(session.camera().view());
+        [rotation * Vec3::X, rotation * Vec3::Y, rotation * Vec3::Z]
+    };
+    let labels =
+        [("X", egui::Color32::from_rgb(224, 96, 96)), ("Y", egui::Color32::from_rgb(120, 200, 120)), ("Z", egui::Color32::from_rgb(110, 150, 230))];
+    let center = egui::pos2(rect.right() - 34.0, rect.bottom() - 34.0);
+    let length = 22.0;
+    for (axis, (label, color)) in axes.iter().zip(labels) {
+        let direction = egui::vec2(axis.x, -axis.y);
+        ui.painter().line_segment([center, center + direction * length], egui::Stroke::new(2.0, color));
+        ui.painter().text(center + direction * (length + 7.0), egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(11.0), color);
     }
 }
 

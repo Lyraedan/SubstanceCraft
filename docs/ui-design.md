@@ -46,10 +46,19 @@ Panels are resizable; visibility is persisted in `UiState` and toggled from the 
 
 ## Icons
 
-`icons.rs` maps a stable icon name to a placeholder glyph. The glyphs are chosen from codepoints
-that the bundled egui fonts actually cover (verified against `epaint_default_fonts`), so nothing
-renders as tofu. They stand in for the original SVG catalog (see `docs/brand/`); when the SVGs land,
-only `icons.rs` changes. No Adobe icons or assets are used.
+The workspace icons are original monochrome SVGs in `docs/brand/icons/` (see that directory's
+README for the format). `crates/ui/src/icons.rs` embeds them with `include_bytes!` and prepares them
+through `craft_ui::icons::SvgIconSet`; `icons::install_loaders(ctx)` installs egui's SVG loader at
+startup. Views ask for `icons::image("name", size)` and use `egui::Button::image` /
+`Button::image_and_text`; nothing in a view names an asset file directly. Add an icon by dropping the
+SVG in `docs/brand/icons/` and adding a `CATALOG` entry (a test guards the mapping). No Adobe icons
+or assets are used.
+
+## Themes
+
+`theme::Tokens` provides `DARK` (default, blue accent) and `GRAY` (neutral studio gray, amber
+accent). `state::ThemeChoice` selects one; it is persisted and switchable from the `Window` menu.
+The chosen palette is applied on startup and on change; views never hard-code colours.
 
 ## Performance
 

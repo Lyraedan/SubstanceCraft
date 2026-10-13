@@ -5,7 +5,12 @@
 //! or a file dialog are handled by the shell's command runner; low-level and introspection
 //! commands are hidden here because they are driven by panels or by automation.
 
+use serde_json::json;
+use substancecraft_engine::session::lock;
+use substancecraft_engine::workspace::Panel;
+
 use crate::app::StudioApp;
+use crate::state::ThemeChoice;
 
 /// Top-level menus, in order (mirroring Substance 3D Painter minus its scripting menus).
 const MENU_ORDER: &[&str] = &["File", "Edit", "View", "Bake", "Window", "Help"];
@@ -35,6 +40,11 @@ const HIDDEN_IDS: &[&str] = &[
     "bake.save",
     "layer.list",
     "texture_set.list",
+    // Workspace commands back the shell's own Window toggles.
+    "ui.panel_state",
+    "ui.set_panel",
+    "ui.toggle_panel",
+    "ui.set_right_tab",
 ];
 
 /// One registry command reduced to what the menu needs.
@@ -93,16 +103,24 @@ pub(crate) fn menu_bar(app: &mut StudioApp, ui: &mut egui::Ui) {
     });
 }
 
-/// The shell-owned `Window` menu: pure view state, never document state.
+/// The `Window` menu: view state, driven by the workspace commands so the control channel can do
+/// exactly the same thing.
 fn window_toggles(app: &mut StudioApp, ui: &mut egui::Ui) {
-    let mut state = app.ui_state();
-    let mut changed = ui.checkbox(&mut state.show_texture_sets, "Texture Set List").changed();
-    changed |= ui.checkbox(&mut state.show_layer_stack, "Layers & Settings").changed();
-    changed |= ui.checkbox(&mut state.show_shelf, "Assets Shelf").changed();
-    changed |= ui.checkbox(&mut state.show_tool_properties, "Tool Properties").changed();
-    changed |= ui.checkbox(&mut state.show_tool_rail, "Tool Rail").changed();
-    if changed {
-        app.update_ui(|ui_state| *ui_state = state);
+    let workspace = lock(&app.session).workspace();
+    for panel in Panel::ALL {
+        let mut visible = workspace.is_visible(panel);
+        if ui.checkbox(&mut visible, panel.label()).changed() {
+            app.dispatch_and_report("ui.set_panel", &json!({ "panel": panel.id(), "visible": visible }));
+        }
+    }
+
+    ui.separator();
+    ui.label("Theme");
+    let current = app.theme();
+    for choice in ThemeChoice::ALL {
+        if ui.radio(current == choice, choice.label()).clicked() {
+            app.set_theme(ui.ctx(), choice);
+        }
     }
 }
 

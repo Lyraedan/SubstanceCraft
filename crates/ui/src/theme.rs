@@ -58,6 +58,24 @@ impl Tokens {
         radius: 5,
     };
 
+    /// A neutral studio-gray theme (closer to Substance 3D Painter's neutral chrome).
+    pub const GRAY: Self = Self {
+        window_bg: Color32::from_rgb(30, 30, 32),
+        panel_bg: Color32::from_rgb(52, 53, 55),
+        menu_bg: Color32::from_rgb(44, 45, 47),
+        rail_bg: Color32::from_rgb(48, 49, 51),
+        header_bg: Color32::from_rgb(60, 61, 64),
+        surface: Color32::from_rgb(66, 68, 71),
+        surface_hover: Color32::from_rgb(80, 82, 86),
+        surface_active: Color32::from_rgb(96, 98, 102),
+        accent: Color32::from_rgb(232, 150, 60),
+        text: Color32::from_rgb(224, 224, 226),
+        text_dim: Color32::from_rgb(152, 153, 155),
+        border: Color32::from_rgb(72, 74, 78),
+        viewport_bg: Color32::from_rgb(36, 36, 38),
+        radius: 4,
+    };
+
     /// Install these tokens into an egui context.
     pub fn apply(&self, ctx: &egui::Context) {
         let mut visuals = Visuals::dark();

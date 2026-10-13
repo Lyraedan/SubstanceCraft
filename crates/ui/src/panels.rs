@@ -4,18 +4,124 @@
 //! Mirrors Substance 3D Painter's right column and bottom shelf. Views read tokens and dispatch
 //! commands; they never mutate the document directly.
 
+use std::collections::HashMap;
+
 use serde_json::{Value, json};
 use substancecraft_bake::BakeMap;
 use substancecraft_doc::{BlendMode, Channel, Filter, Generator, LayerKind, Material, Shader, TextureSet, UvTile};
 use substancecraft_engine::session::lock;
+use substancecraft_paint::ToolKind;
 
 use crate::app::StudioApp;
 use crate::icons;
 use crate::state::RightTab;
 use crate::theme::Tokens;
 
-/// The assets shelf's filter tabs as `(label, section id)`.
-const ASSET_FILTERS: &[(&str, &str)] = &[("All", "all"), ("Generators", "generators"), ("Filters", "filters"), ("Bake", "bake"), ("Post", "post")];
+/// The assets shelf's library selector.
+const ASSET_LIBRARIES: &[&str] = &["All Libraries", "Project"];
+
+/// The assets shelf's filter tabs as `(label, icon, category)`.
+const ASSET_FILTERS: &[(&str, &str, &str)] = &[
+    ("All", "layers", "all"),
+    ("Materials", "material", "material"),
+    ("Brushes", "brush", "brush"),
+    ("Generators", "generator", "generator"),
+    ("Filters", "filter", "filter"),
+    ("Bake", "assets", "bake"),
+    ("Post", "effect", "post"),
+];
+
+/// An asset tile's thumbnail.
+const TILE: f32 = 76.0;
+
+/// The cache budget used for the status bar's percentage (Painter-style disk-usage readout).
+const CACHE_BUDGET_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
+/// How to paint an asset tile's thumbnail.
+enum Thumb {
+    /// A procedural generator preview, keyed by generator id.
+    Generator(&'static str),
+    /// A flat colour swatch.
+    Swatch([f32; 4]),
+    /// A soft brush dab in this colour.
+    BrushDab([f32; 4]),
+    /// A black-to-white gradient (a filter sample).
+    Gradient,
+    /// A centred icon, keyed by name.
+    Icon(&'static str),
+}
+
+/// One clickable asset in the shelf grid.
+struct AssetTile {
+    label: String,
+    tooltip: String,
+    action: Option<(&'static str, Value)>,
+    thumb: Thumb,
+}
+
+/// Paint an asset thumbnail into `rect`.
+fn paint_thumb(ui: &egui::Ui, rect: egui::Rect, thumb: &Thumb, thumbs: &HashMap<&'static str, egui::TextureHandle>) {
+    let painter = ui.painter();
+    painter.rect_filled(rect, egui::CornerRadius::same(3), Tokens::DARK.window_bg);
+    match thumb {
+        Thumb::Generator(id) => {
+            if let Some(handle) = thumbs.get(id) {
+                painter.image(handle.id(), rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+            }
+        }
+        Thumb::Swatch(color) => {
+            painter.rect_filled(rect.shrink(6.0), egui::CornerRadius::same(3), linear_color(*color));
+        }
+        Thumb::BrushDab(color) => {
+            painter.circle_filled(rect.center(), rect.width() * 0.38, linear_color(*color));
+        }
+        Thumb::Gradient => {
+            let steps = 16;
+            let step_width = rect.width() / steps as f32;
+            for step in 0..steps {
+                let t = step as f32 / (steps - 1) as f32;
+                let x = rect.left() + step_width * step as f32;
+                let strip = egui::Rect::from_min_size(egui::pos2(x, rect.top()), egui::vec2(step_width + 1.0, rect.height()));
+                painter.rect_filled(strip, egui::CornerRadius::ZERO, egui::Color32::from_gray((t * 255.0) as u8));
+            }
+        }
+        Thumb::Icon(name) => {
+            let inner = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width() * 0.55, rect.height() * 0.55));
+            crate::icons::image(name, inner.width()).paint_at(ui, inner);
+        }
+    }
+    painter.rect_stroke(rect, egui::CornerRadius::same(3), egui::Stroke::new(1.0, Tokens::DARK.border), egui::StrokeKind::Inside);
+}
+
+/// Convert a linear RGBA colour to an opaque display colour.
+fn linear_color(color: [f32; 4]) -> egui::Color32 {
+    let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+    egui::Color32::from_rgb(channel(color[0]), channel(color[1]), channel(color[2]))
+}
+
+/// A tile caption, truncated so it never overflows the tile.
+fn tile_caption(label: &str) -> String {
+    const MAX: usize = 12;
+    if label.chars().count() <= MAX {
+        label.to_string()
+    } else {
+        let mut caption: String = label.chars().take(MAX - 1).collect();
+        caption.push('…');
+        caption
+    }
+}
+
+/// Collect the effect ids used by a layer stack (recursively), for the `Project` library filter.
+fn collect_effect_ids(stack: &substancecraft_doc::LayerStack, out: &mut Vec<&'static str>) {
+    for layer in &stack.layers {
+        if let Some(effect) = layer.effect_kind() {
+            out.push(effect.id());
+        }
+        if let Some(children) = layer.child_stack() {
+            collect_effect_ids(children, out);
+        }
+    }
+}
 
 /// A flattened view of one layer for the UI.
 struct LayerView {
@@ -229,17 +335,17 @@ impl StudioApp {
 
     /// The right dock's middle section: a tab strip over Layers and Texture Set Settings.
     pub(crate) fn right_section(&mut self, ui: &mut egui::Ui) {
-        let current = self.ui_state().right_tab;
+        let current = lock(&self.session).workspace().right_tab;
         let mut chosen = current;
         ui.horizontal(|ui| {
-            for tab in [RightTab::Layers, RightTab::Settings] {
+            for tab in RightTab::ALL {
                 if ui.selectable_label(current == tab, tab.label()).clicked() {
                     chosen = tab;
                 }
             }
         });
         if chosen != current {
-            self.update_ui(|state| state.right_tab = chosen);
+            self.dispatch_and_report("ui.set_right_tab", &json!({ "tab": chosen.id() }));
         }
         ui.separator();
         match chosen {
@@ -264,33 +370,33 @@ impl StudioApp {
 
         ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {
-            if ui.button(format!("{} Fill", icons::glyph("add"))).clicked() {
+            if ui.add(egui::Button::image_and_text(icons::image("add", 14.0), "Fill")).clicked() {
                 self.report(self.dispatch("layer.add_fill", &Value::Null));
                 self.active_layer = usize::MAX;
             }
-            if ui.button(format!("{} Group", icons::glyph("add"))).clicked() {
+            if ui.add(egui::Button::image_and_text(icons::image("add", 14.0), "Group")).clicked() {
                 self.report(self.dispatch("layer.add_group", &Value::Null));
                 self.active_layer = usize::MAX;
             }
             let has_selection = self.active_layer != usize::MAX;
-            if ui.add_enabled(has_selection, egui::Button::new(icons::glyph("delete"))).on_hover_text("Delete layer").clicked() {
+            if ui.add_enabled(has_selection, egui::Button::image(icons::image("delete", 14.0))).on_hover_text("Delete layer").clicked() {
                 self.report(self.dispatch("layer.delete", &json!({ "index": self.active_layer })));
             }
-            if ui.add_enabled(has_selection, egui::Button::new(icons::glyph("up"))).on_hover_text("Move up").clicked() {
+            if ui.add_enabled(has_selection, egui::Button::image(icons::image("up", 14.0))).on_hover_text("Move up").clicked() {
                 self.report(self.dispatch("layer.move", &json!({ "index": self.active_layer, "direction": "up" })));
                 self.active_layer = self.active_layer.saturating_add(1);
             }
-            if ui.add_enabled(has_selection, egui::Button::new(icons::glyph("down"))).on_hover_text("Move down").clicked() {
+            if ui.add_enabled(has_selection, egui::Button::image(icons::image("down", 14.0))).on_hover_text("Move down").clicked() {
                 self.report(self.dispatch("layer.move", &json!({ "index": self.active_layer, "direction": "down" })));
                 self.active_layer = self.active_layer.saturating_sub(1);
             }
-            if ui.add_enabled(has_selection, egui::Button::new(icons::glyph("group"))).on_hover_text("Group layer").clicked() {
+            if ui.add_enabled(has_selection, egui::Button::image(icons::image("group", 14.0))).on_hover_text("Group layer").clicked() {
                 self.report(self.dispatch("layer.group", &json!({ "index": self.active_layer })));
             }
-            if ui.add_enabled(can_undo, egui::Button::new(icons::glyph("undo"))).on_hover_text("Undo").clicked() {
+            if ui.add_enabled(can_undo, egui::Button::image(icons::image("undo", 14.0))).on_hover_text("Undo").clicked() {
                 self.report(self.dispatch("edit.undo", &Value::Null));
             }
-            if ui.add_enabled(can_redo, egui::Button::new(icons::glyph("redo"))).on_hover_text("Redo").clicked() {
+            if ui.add_enabled(can_redo, egui::Button::image(icons::image("redo", 14.0))).on_hover_text("Redo").clicked() {
                 self.report(self.dispatch("edit.redo", &Value::Null));
             }
         });
@@ -303,7 +409,8 @@ impl StudioApp {
             egui::ScrollArea::vertical().id_salt("sc.layers.list").show(&mut columns[0], |ui| {
                 for (index, view) in views.iter().enumerate().rev() {
                     ui.horizontal(|ui| {
-                        if ui.small_button(icons::glyph(if view.visible { "visibility" } else { "hidden" })).clicked() {
+                        let icon = if view.visible { "visibility" } else { "hidden" };
+                        if ui.add(egui::Button::image(icons::image(icon, 13.0)).frame(false)).clicked() {
                             actions.push(("layer.set_visible", json!({ "index": index, "visible": !view.visible })));
                         }
                         let label = format!("{}  [{}]", view.name, view.type_id);
@@ -453,26 +560,124 @@ impl StudioApp {
         }
     }
 
-    /// The bottom assets shelf: a searchable, filterable list of generators, filters, bakers and
-    /// post-effects.
+    /// The bottom assets shelf: a library selector, search, icon filter row and a thumbnail grid of
+    /// materials, brushes, generators and filters, with bake and post settings below.
     pub(crate) fn assets_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.strong("Assets");
             ui.separator();
-            ui.label(icons::glyph("search"));
-            ui.add(egui::TextEdit::singleline(&mut self.asset_search).desired_width(160.0).hint_text("Search"));
+            let library = ASSET_LIBRARIES.get(self.asset_library).copied().unwrap_or("All Libraries");
+            egui::ComboBox::from_id_salt("sc.assets.library").selected_text(library).show_ui(ui, |ui| {
+                for (index, name) in ASSET_LIBRARIES.iter().enumerate() {
+                    if ui.selectable_label(self.asset_library == index, *name).clicked() {
+                        self.asset_library = index;
+                    }
+                }
+            });
             ui.separator();
-            for (index, (label, _)) in ASSET_FILTERS.iter().enumerate() {
-                if ui.selectable_label(self.asset_filter == index, *label).clicked() {
+            ui.add(icons::image("search", 14.0));
+            ui.add(egui::TextEdit::singleline(&mut self.asset_search).desired_width(150.0).hint_text("Search"));
+            ui.separator();
+            for (index, (label, icon, _)) in ASSET_FILTERS.iter().enumerate() {
+                if ui.add(egui::Button::image(icons::image(icon, 16.0)).selected(self.asset_filter == index)).on_hover_text(*label).clicked() {
                     self.asset_filter = index;
                 }
             }
         });
         ui.separator();
 
-        let filter = ASSET_FILTERS.get(self.asset_filter).map(|(_, id)| *id).unwrap_or("all");
+        let category = ASSET_FILTERS.get(self.asset_filter).map(|(_, _, category)| *category).unwrap_or("all");
         let query = self.asset_search.trim().to_ascii_lowercase();
         let matches = |label: &str| query.is_empty() || label.to_ascii_lowercase().contains(&query);
+
+        let (mat_name, mat_color, brush_color) = {
+            let session = lock(&self.session);
+            let project = session.project();
+            let material = project
+                .active_set()
+                .and_then(|set| set.materials.first())
+                .and_then(|id| project.scene.materials.get(*id as usize))
+                .cloned()
+                .unwrap_or_default();
+            (material.name, material.base_color, session.brush().color)
+        };
+
+        let project_ids: Vec<&'static str> = if self.asset_library == 1 {
+            let session = lock(&self.session);
+            let mut ids = Vec::new();
+            if let Some(set) = session.project().active_set() {
+                collect_effect_ids(&set.layers, &mut ids);
+            }
+            ids
+        } else {
+            Vec::new()
+        };
+
+        let show = |category_name: &str| category == "all" || category == category_name;
+        let mut tiles: Vec<AssetTile> = Vec::new();
+
+        if show("material") && matches(&mat_name) {
+            tiles.push(AssetTile {
+                label: mat_name.clone(),
+                tooltip: format!("Material · {mat_name} — click to pick its base colour"),
+                action: Some(("brush.set_color", json!({ "color": mat_color }))),
+                thumb: Thumb::Swatch(mat_color),
+            });
+        }
+        if show("brush") {
+            for tool in ToolKind::ALL {
+                if matches(tool.label()) {
+                    tiles.push(AssetTile {
+                        label: tool.label().to_string(),
+                        tooltip: format!("{} tool", tool.label()),
+                        action: Some(("tool.set", json!({ "tool": tool.id() }))),
+                        thumb: Thumb::BrushDab(brush_color),
+                    });
+                }
+            }
+        }
+        if show("generator") {
+            for id in Generator::IDS {
+                if self.asset_library == 1 && !project_ids.contains(&id) {
+                    continue;
+                }
+                let label = Generator::from_id(id).map(|generator| generator.label()).unwrap_or(id);
+                if matches(label) {
+                    tiles.push(AssetTile {
+                        label: label.to_string(),
+                        tooltip: format!("Add {label} effect layer"),
+                        action: Some(("layer.add_generator", json!({ "generator": id }))),
+                        thumb: Thumb::Generator(id),
+                    });
+                }
+            }
+        }
+        if show("filter") {
+            for id in Filter::IDS {
+                if self.asset_library == 1 && !project_ids.contains(&id) {
+                    continue;
+                }
+                let label = Filter::from_id(id).map(|filter| filter.label()).unwrap_or(id);
+                if matches(label) {
+                    tiles.push(AssetTile {
+                        label: label.to_string(),
+                        tooltip: format!("Add {label} filter effect"),
+                        action: Some(("layer.add_filter", json!({ "filter": id }))),
+                        thumb: Thumb::Gradient,
+                    });
+                }
+            }
+        }
+        if show("bake") && matches("Bake Maps") {
+            tiles.push(AssetTile {
+                label: "Bake Maps".to_string(),
+                tooltip: "Bake the mesh maps".to_string(),
+                action: Some(("bake.run", Value::Null)),
+                thumb: Thumb::Icon("assets"),
+            });
+        }
+
+        self.ensure_generator_thumbs(ui.ctx());
 
         let (resolution, samples, high_poly, bake_revision, first_bake, log, vignette, bloom) = {
             let session = lock(&self.session);
@@ -488,7 +693,6 @@ impl StudioApp {
                 session.settings().bloom,
             )
         };
-
         if let Some((width, height, bytes)) = &first_bake
             && self.bake_preview.as_ref().is_none_or(|(revision, _)| *revision != bake_revision)
         {
@@ -500,37 +704,36 @@ impl StudioApp {
         let has_bake = first_bake.is_some();
 
         let mut actions: Vec<(&'static str, Value)> = Vec::new();
+        let thumbs = std::mem::take(&mut self.generator_thumbs);
         egui::ScrollArea::vertical().id_salt("sc.assets").show(ui, |ui| {
-            if (filter == "all" || filter == "generators") && !Generator::IDS.is_empty() {
-                ui.add_space(4.0);
-                ui.strong("Generators");
+            if tiles.is_empty() {
+                if !query.is_empty() {
+                    ui.label(egui::RichText::new("No matching assets").color(Tokens::DARK.text_dim));
+                }
+            } else {
+                ui.add_space(2.0);
                 ui.horizontal_wrapped(|ui| {
-                    for id in Generator::IDS {
-                        let label = Generator::from_id(id).map(|generator| generator.label()).unwrap_or(id);
-                        if matches(label) && ui.add_sized([92.0, 26.0], egui::Button::new(label)).clicked() {
-                            actions.push(("layer.add_generator", json!({ "generator": id })));
-                        }
+                    for tile in &tiles {
+                        ui.allocate_ui_with_layout(egui::vec2(TILE, TILE + 18.0), egui::Layout::top_down(egui::Align::Center), |ui| {
+                            let (rect, response) = ui.allocate_exact_size(egui::vec2(TILE, TILE), egui::Sense::click());
+                            paint_thumb(ui, rect, &tile.thumb, &thumbs);
+                            if response.clicked()
+                                && let Some(action) = tile.action.clone()
+                            {
+                                actions.push(action);
+                            }
+                            ui.label(egui::RichText::new(tile_caption(&tile.label)).small().color(Tokens::DARK.text_dim));
+                        })
+                        .response
+                        .on_hover_text(&tile.tooltip);
                     }
                 });
             }
 
-            if (filter == "all" || filter == "filters") && !Filter::IDS.is_empty() {
-                ui.add_space(4.0);
-                ui.strong("Filters");
-                ui.horizontal_wrapped(|ui| {
-                    for id in Filter::IDS {
-                        let label = Filter::from_id(id).map(|filter| filter.label()).unwrap_or(id);
-                        if matches(label) && ui.add_sized([92.0, 26.0], egui::Button::new(label)).clicked() {
-                            actions.push(("layer.add_filter", json!({ "filter": id })));
-                        }
-                    }
-                });
-            }
-
-            if filter == "all" || filter == "bake" {
-                ui.add_space(4.0);
+            if query.is_empty() && (category == "all" || category == "bake") {
+                ui.add_space(6.0);
                 ui.separator();
-                ui.strong("Bake");
+                ui.strong("Bake Settings");
                 ui.horizontal(|ui| {
                     ui.label("Res");
                     for value in [128u32, 256, 512] {
@@ -553,9 +756,6 @@ impl StudioApp {
                         actions.push(("bake.clear_highpoly", Value::Null));
                     }
                 });
-                if ui.button("Bake Mesh Maps").clicked() {
-                    actions.push(("bake.run", Value::Null));
-                }
                 if let Some(handle) = &bake_preview {
                     ui.add(egui::Image::new(handle).fit_to_exact_size(egui::vec2(96.0, 96.0)));
                 }
@@ -577,8 +777,8 @@ impl StudioApp {
                 }
             }
 
-            if filter == "all" || filter == "post" {
-                ui.add_space(4.0);
+            if query.is_empty() && (category == "all" || category == "post") {
+                ui.add_space(6.0);
                 ui.separator();
                 ui.strong("Post");
                 let mut vignette_value = vignette;
@@ -591,6 +791,7 @@ impl StudioApp {
                 }
             }
         });
+        self.generator_thumbs = thumbs;
 
         for (id, params) in actions {
             let outcome = self.dispatch(id, &params);
@@ -598,12 +799,31 @@ impl StudioApp {
         }
     }
 
-    /// The bottom status bar: the latest status message and the product version.
+    /// Generate and cache small previews for the procedural generators (once).
+    pub(crate) fn ensure_generator_thumbs(&mut self, ctx: &egui::Context) {
+        for id in Generator::IDS {
+            if self.generator_thumbs.contains_key(id) {
+                continue;
+            }
+            let Some(generator) = Generator::from_id(id) else { continue };
+            let image = substancecraft_material::generate(&generator, 64, 64);
+            let color = egui::ColorImage::from_rgba_unmultiplied([image.width as usize, image.height as usize], &image.to_rgba8());
+            let handle = ctx.load_texture(format!("sc.gen.{id}"), color, egui::TextureOptions::LINEAR);
+            self.generator_thumbs.insert(id, handle);
+        }
+    }
+
+    /// The bottom status bar: the latest status message, the cache usage and the product version.
     pub(crate) fn status_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(&self.status).color(Tokens::DARK.text_dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(egui::RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION"))).color(Tokens::DARK.text_dim));
+                ui.separator();
+                let bytes = lock(&self.session).cache_bytes();
+                let megabytes = bytes as f64 / (1024.0 * 1024.0);
+                let percent = bytes.saturating_mul(100) / CACHE_BUDGET_BYTES;
+                ui.label(egui::RichText::new(format!("Cache: {megabytes:.1} MB ({percent}%)")).color(Tokens::DARK.text_dim));
             });
         });
     }

@@ -20,9 +20,12 @@ pub mod session;
 pub mod texture_set_cmds;
 pub mod ui_cmds;
 pub mod viewport_cmds;
+pub mod workspace;
+pub mod workspace_cmds;
 
 pub use command::{CommandError, CommandOutcome, CommandRegistry, CommandResult, CommandSpec};
 pub use session::Session;
+pub use workspace::{Panel, RightTab, Workspace};
 
 /// Build the registry with every built-in command registered.
 pub fn registry() -> CommandRegistry {

@@ -17,6 +17,7 @@ substancecraft-geom.workspace = true
 substancecraft-raster.workspace = true
 substancecraft-paint.workspace = true
 substancecraft-compose.workspace = true
+substancecraft-material.workspace = true
 substancecraft-bake.workspace = true
 substancecraft-render.workspace = true
 substancecraft-engine.workspace = true
@@ -24,6 +25,7 @@ craft-ui.workspace = true
 craft-quit = { workspace = true, features = ["egui", "menu"] }
 craft-settings.workspace = true
 egui.workspace = true
+egui_extras = { workspace = true, features = ["svg"] }
 eframe.workspace = true
 serde.workspace = true
 serde_json.workspace = true
