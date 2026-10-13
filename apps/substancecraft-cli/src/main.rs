@@ -1,5 +1,7 @@
 //! Headless SubstanceCraft CLI.
 
+use std::io::BufReader;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -31,6 +33,13 @@ enum Command {
         #[arg(long, default_value = "127.0.0.1:8765")]
         addr: String,
     },
+    /// Run a script of newline-delimited JSON requests (from a file, or stdin).
+    Script {
+        /// The script file; reads stdin when omitted.
+        path: Option<PathBuf>,
+    },
+    /// Serve the Model Context Protocol (MCP) over stdin/stdout.
+    Mcp,
     /// Print version information.
     Info,
 }
@@ -92,5 +101,31 @@ fn main() -> ExitCode {
             println!("SubstanceCraft {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
+        Command::Script { path } => {
+            let result = match path {
+                Some(path) => match std::fs::File::open(&path) {
+                    Ok(file) => substancecraft_automation::server::run_stream(BufReader::new(file), std::io::stdout(), &registry, &session),
+                    Err(err) => {
+                        eprintln!("could not open {}: {err}", path.display());
+                        return ExitCode::FAILURE;
+                    }
+                },
+                None => substancecraft_automation::server::run_stream(std::io::stdin().lock(), std::io::stdout(), &registry, &session),
+            };
+            match result {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(err) => {
+                    eprintln!("script failed: {err}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        Command::Mcp => match substancecraft_automation::mcp::serve_stdio(registry, session) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("mcp server failed: {err}");
+                ExitCode::FAILURE
+            }
+        },
     }
 }

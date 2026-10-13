@@ -4,27 +4,26 @@ Milestones and the current focus. The one-page summary is `ROADMAP.md`.
 
 ## Current focus
 
-**M11 — Automation.**
+**M12 — Polish / release.**
 
-M10 is complete (native `.sccraft` project format, save/open/new, autosave/recovery). M11 makes the
-whole app agent-drivable end to end:
+M11 is complete (control channel, MCP server, headless CLI). M12 prepares a release:
 
-1. Finish command coverage so every user-visible action is a command with an id, menu path and tests.
-2. A JSON control-protocol server shared with the live UI session (currently the app server and the
-   UI both hold the session; expose viewport/scene introspection).
-3. An MCP server exposing the command registry as tools.
-4. The headless CLI: open a project, run commands, bake, export, screenshot.
-5. Optional Rust scripting over the command API.
+1. A performance harness (`cargo xtask perf`) with budgets and recorded baselines; make the viewport
+   render on revision change rather than every frame.
+2. A generated scorecard (`cargo xtask scorecard`) with measured numbers.
+3. Packaging: `cargo xtask build` producing a macOS `.app`, a Windows installer and a Linux tarball,
+   codesigned for distribution.
+4. Final parity sweep across `docs/*-parity.md` and the gap list.
 
 See `docs/gaps.md` for the ranked work list.
 
-## M10 deliverables (reference) — done
+## M11 deliverables (reference) — done
 
-1. `format`: versioned `.sccraft` RON, `craft-atomic` writes, `save`/`load`/`to_bytes`/`from_bytes`. ✅
-2. serde across `geom`/`raster`/`doc` (glam serde). ✅
-3. `engine`: path + dirty state, `save`/`open`/`new_project`/`write_copy`; `project_cmds`. ✅
-4. `ui`: File buttons, window title + dirty, autosave timer. ✅
-5. Round-trip, version-rejection and autosave/recover tests. ✅
+1. `automation::mcp`: MCP over stdio (`initialize`/`tools/list`/`tools/call`). ✅
+2. `automation::server`: shared `run_stream` + `system.describe`. ✅
+3. `engine::info_cmds`: `session.info`, `scene.info`, `viewport.state`, `app.capabilities`. ✅
+4. `substancecraft-cli`: `script <file>` and `mcp` subcommands. ✅
+5. `docs/control-protocol.md` covers the channel, MCP and scripting. ✅
 
 Acceptance: `cargo run -p substancecraft` opens the window, imports a sample glTF/OBJ, orbits with a
 real camera, PBR-shades it with IBL and tone mapping, switches display modes — all via commands; the

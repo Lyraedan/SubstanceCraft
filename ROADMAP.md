@@ -15,9 +15,9 @@ normal, roughness, metalness, UV checker, wireframe); ground grid and sky/enviro
 wgpu viewport hosted in egui; offscreen snapshot plus live `ui.screenshot`; pinned CC0 assets via
 `cargo xtask assets`.
 
-**M10 — Project lifecycle: complete.** The whole project serialises to a crash-safe, versioned
-`.sccraft` file (RON via `craft-atomic`); `file.new/open/save/save_as/info`, window title + dirty state,
-autosave every 60 s and `file.recover`. 81 commands.
+**M11 — Automation: complete.** The whole app is agent-drivable: 85 commands, the JSON control channel
+(now with `system.describe` and introspection commands `session.info` / `scene.info` /
+`viewport.state`), a **Model Context Protocol server** over stdio, and a headless CLI script runner.
 
 ## Milestones
 
@@ -34,7 +34,8 @@ autosave every 60 s and `file.recover`. 81 commands.
 | **M8** | Export | formats, presets, packing, naming, UDIM, round-trip ✅ |
 | **M9** | Workflow depth | per-set shaders + params, post-effects ◐ (anchors/instancing pending) |
 | **M10** | Project lifecycle | `.sccraft` save/open/new, dirty state, autosave/recovery ✅ |
-| M11 | Automation | full command coverage, MCP, headless CLI, Rust scripting |
+| **M11** | Automation | full commands, control channel, MCP server, CLI script runner ✅ |
+| M12 | Polish/release | perf budgets, scorecard, signed packages (macOS/Windows/Linux) |
 | M3 | Layer stack | doc model, fill/mask/group/blend, CPU oracle + GPU compositor, undo |
 | M4 | Painting | brush engine, tablet pressure, projection painting |
 | M5 | Painting tools | projection, polyfill, smudge, clone, particle/physics brushes |

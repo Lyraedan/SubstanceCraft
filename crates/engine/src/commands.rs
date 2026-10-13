@@ -25,6 +25,7 @@ fn register(registry: &mut CommandRegistry) -> Result<(), crate::command::Comman
     crate::paint_cmds::register(registry)?;
     crate::bake_cmds::register(registry)?;
     crate::export_cmds::register(registry)?;
+    crate::info_cmds::register(registry)?;
     crate::ui_cmds::register(registry)?;
 
     registry.register(

@@ -2,48 +2,35 @@
 
 Every known shortfall, ranked. The work list to pick from. New entries go at the top of their tier.
 
-_Last reviewed: 2026-10-13 (M10 complete)._
+_Last reviewed: 2026-10-13 (M11 complete)._
 
-## Project-format polish (deferred from M10)
+## Automation polish (deferred from M11)
 
-1. **RON text is large.** Paint images serialise as text f32 arrays; a binary container (or embedded
-   PNG/KTX) is needed for real projects.
-2. **No project templates or New Project window** — only a blank new project.
-3. **No startup recovery prompt.** Autosave exists but recovery is a manual command.
-4. **The environment map, high-poly mesh and baked maps are not saved** with the project.
+1. **No typed Rust scripting layer** over the command API (only the JSON/Script/MCP surfaces).
+2. **MCP exposes tools only** — no resources or prompts.
+3. **The control channel does not stream events** (only request/response).
 
-## Workflow-depth polish (deferred from M9)
+## Performance / release (M12)
 
-5. **One shading model.** Shader selection is stored but the viewport uses one metal/rough model; the
-   specular parameter is unused.
-6. **No anchor points, layer instancing, or physical-size scaling.**
-7. **Post-effects are a cheap single-pass bloom + vignette.**
+4. **No perf harness** (`cargo xtask perf`, budgets) and **no packaging/signing**; `cargo xtask build`
+   only copies the raw binaries.
+5. **No measured scorecard**; the viewport re-renders every frame.
 
-## Export polish (deferred from M8)
+## Project-format polish
 
-8. **Per-tile UDIM content** (naming wired; content identical per tile).
-9. **No USD / OpenPBR material export**, saved presets, batch export, or edge padding.
+6. **RON text is large** (paint images); no binary container. No templates/New Project window or
+   startup recovery prompt; environment/high-poly/baked maps are not saved.
 
-## Baking polish (deferred from M7)
+## Workflow-depth / export / baking / painting polish
 
-10. **No cage mesh / skew correction**; per-map settings; baked maps not wired into generators; CPU baker.
-
-## Procedural / painting / layer / viewport polish
-
-11. **No smart materials / masks; generator/filter parameters not editable in the UI.**
-12. **No native pen pressure/tilt; no physics brushes; CPU painting; not UDIM-aware.**
-13. **GPU compositor limited to flat fill stacks; masks are constants; undo snapshots the whole set list.**
-14. **AO/height display modes; grid alignment; camera persistence; prefiltered IBL; selection outline.**
-
-## Next milestones
-
-15. **No MCP** (M11). **No perf harness / packaging** (M12).
-
-## Infrastructure
-
-16. **No corpus tests.**
-17. **No MCP server.** The JSON control channel is the only agent interface.
+7. **One shading model**; specular parameter unused; no anchors/instancing/physical size; cheap post-effects.
+8. **Per-tile UDIM content**; no USD/OpenPBR material export, saved presets, batch export, edge padding.
+9. **No cage mesh/skew**; per-map settings; baked maps not wired into generators; CPU baker.
+10. **No smart materials/masks**; filter/generator params not editable in the UI.
+11. **No native pen pressure/tilt; no physics brushes; CPU painting; not UDIM-aware.**
+12. **GPU compositor limited to flat fill stacks; masks are constants; undo snapshots the whole set list.**
+13. **AO/height display modes; grid alignment; camera persistence; prefiltered IBL; selection outline.**
 
 ## Documentation
 
-18. Parity matrices beyond viewport/texture sets/layers/painting/procedural/baking/export/shaders/project/automation are still partial.
+14. Parity matrices beyond the tracked dimensions are still partial.

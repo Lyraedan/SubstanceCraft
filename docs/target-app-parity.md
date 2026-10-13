@@ -4,21 +4,31 @@ Where SubstanceCraft stands against Adobe Substance 3D Painter, dimension by dim
 lines carry the date; update the dimension when your work moves it. SubstanceCraft is a clean-room
 reimplementation: parity means comparable behaviour and results, never copied code or assets.
 
-_Last reviewed: 2026-10-13 (M10 complete)._
+_Last reviewed: 2026-10-13 (M11 complete)._
 
 | Dimension | Weight | Status | Notes |
 |---|---|---|---|
-| Project & texture-set workflow | high | 40% | Split by material, list/select/rename, per-set resolution + channels + UV tiles, solo, save/open (M2, M10). |
+| Project & texture-set workflow | high | 40% | Split by material, per-set channels/resolution/UDIM, solo, save/open (M2, M10). |
 | Layer stack & blending | high | 45% | Fill/group layers, masks, 8 blend modes, opacity, visibility, undo/redo; CPU + GPU compositor (M3). |
 | Painting engine | high | 62% | Brush/eraser/smudge/clone/polyfill, screen-space sizing, symmetry, jitter, active-layer target, live composited result (M4–M5). |
-| Procedural content (generators/filters/smart materials) | high | 40% | Perlin/Simplex/Voronoi/White generators, levels/blur/invert/contrast/brightness filters, effect layers, shelf (M6). |
-| Baking (mesh maps + cage) | high | 50% | BVH-accelerated bakers: position, world/tangent normal, AO, thickness, curvature, material ID; high-poly import; save to PNG (M7). |
-| Export (presets, channels, UDIM, OpenPBR) | high | 55% | Channel export (PNG 8/16, TGA, EXR), presets, packing, naming templates, UDIM naming, round-trip (M8). |
-| Viewport & PBR preview | medium | 90% | Import, camera, PBR, HDRI IBL, tone mapping, display modes, grid, wireframe, composited base colour, post-effects, snapshot. |
+| Procedural content (generators/filters/smart materials) | high | 40% | Generators, filters, effect layers, shelf (M6). |
+| Baking (mesh maps + cage) | high | 50% | BVH-accelerated bakers, high-poly import, save to PNG (M7). |
+| Export (presets, channels, UDIM, OpenPBR) | high | 55% | Channel export (PNG 8/16, TGA, EXR), presets, packing, naming, UDIM, round-trip (M8). |
+| Viewport & PBR preview | medium | 90% | Import, camera, PBR, IBL, tone mapping, display modes, grid, wireframe, composited base colour, post-effects, snapshot. |
 | Shaders (OpenPBR / ASM) | medium | 35% | Per-set shader selection, editable params, post-effects (M9). |
-| Automation & scripting | medium | 35% | 81 commands; control channel drives viewport, texture sets, layers, brushes, tools, paint, effects, baking, export, shaders and projects. |
+| Automation & scripting | medium | 70% | 85 commands; JSON control channel, **MCP server**, headless CLI script runner, introspection (M0–M11). |
 | Native project format | medium | 55% | `.sccraft` (RON via `craft-atomic`), versioned, save/open/save-as/new, title + dirty, autosave/recovery (M10). |
 | Performance | medium | n/a | No measurements yet. |
+
+## Automation (M11) — complete
+
+- [x] Every user-visible action is a registered command (85 commands with id/label/menu/params).
+- [x] JSON control channel (`system.ping`, `system.list_commands`, `system.describe`, dispatch) shared with the live app session.
+- [x] Introspection commands: `session.info`, `scene.info`, `viewport.state`, `app.capabilities`.
+- [x] **MCP server** over stdio: `initialize`, `tools/list`, `tools/call` (id `.` → `_`).
+- [x] Headless CLI: `commands`, `run`, `script <file>`, `serve`, `mcp`, `info`.
+- [ ] A typed Rust scripting layer over the command API.
+- [ ] MCP resources/prompts (tools only today).
 
 ## Project lifecycle (M10) — complete
 

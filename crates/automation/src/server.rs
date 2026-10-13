@@ -1,6 +1,6 @@
 //! The control server: one request per line, one response per line, no panics.
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
 
@@ -39,8 +39,14 @@ pub fn serve(listener: TcpListener, registry: Arc<CommandRegistry>, session: Sha
 }
 
 fn handle(stream: TcpStream, registry: &CommandRegistry, session: &SharedSession) -> std::io::Result<()> {
-    let mut writer = stream.try_clone()?;
+    let writer = stream.try_clone()?;
     let reader = BufReader::new(stream);
+    run_stream(reader, writer, registry, session)
+}
+
+/// Process newline-delimited requests from `reader`, writing one response line per request to
+/// `writer`. Used by the TCP server and by the CLI script runner.
+pub fn run_stream<R: BufRead, W: Write>(reader: R, mut writer: W, registry: &CommandRegistry, session: &SharedSession) -> std::io::Result<()> {
     for line in reader.take(MAX_REQUEST_BYTES).lines() {
         let line = line?;
         if line.trim().is_empty() {
@@ -64,6 +70,22 @@ fn respond(registry: &CommandRegistry, session: &SharedSession, line: &str) -> R
     match request.command.as_str() {
         crate::PING => Response::ok(Some("pong".to_string()), None),
         crate::LIST_COMMANDS => Response::ok(None, Some(registry.describe())),
+        "system.describe" => {
+            let id = request.params.get("command").and_then(serde_json::Value::as_str).unwrap_or("");
+            match registry.get(id) {
+                Some(spec) => Response::ok(
+                    None,
+                    Some(serde_json::json!({
+                        "id": spec.id,
+                        "label": spec.label,
+                        "menu_path": spec.menu_path,
+                        "shortcut": spec.shortcut,
+                        "params": spec.params,
+                    })),
+                ),
+                None => Response::error(format!("no such command: {id}")),
+            }
+        }
         id => {
             let mut session = lock(session);
             match registry.run(id, &mut session, &request.params) {
