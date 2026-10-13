@@ -15,9 +15,9 @@ normal, roughness, metalness, UV checker, wireframe); ground grid and sky/enviro
 wgpu viewport hosted in egui; offscreen snapshot plus live `ui.screenshot`; pinned CC0 assets via
 `cargo xtask assets`.
 
-**M2 — Texture sets & UV tiles: complete.** The imported mesh is split into texture sets by material
-id; a texture-set list selects, renames and inspects each set, with per-set resolution, an OpenPBR
-channel set, UDIM/UV-tile detection and editing, and solo isolation in the viewport. 25 commands.
+**M3 — Layer stack: complete.** Per-texture-set non-destructive stack of fill/group layers with
+masks, opacity, 8 blend modes and visibility; a CPU compositor oracle and a GPU compositor validated
+against it; a layer-stack UI with a live composite preview; undo/redo. 41 commands.
 
 ## Milestones
 
@@ -26,7 +26,8 @@ channel set, UDIM/UV-tile detection and editing, and solo isolation in the viewp
 | **M0** | Bootstrap | workspace, crates, layering, app shell, commands, control channel ✅ |
 | **M1** | Viewport + PBR preview | import, camera, PBR, IBL, tone mapping, display modes, grid ✅ |
 | **M2** | Texture sets & UV tiles | split by material, per-set channels/resolution/UDIM, solo ✅ |
-| M3 | Layer stack | doc model, fill/mask/group/blend, CPU oracle + GPU compositor, undo |
+| **M3** | Layer stack | fill/group layers, masks, blend modes, CPU + GPU compositor, undo ✅ |
+| M4 | Painting | brush engine, tablet pressure, projection painting into layer targets |
 | M3 | Layer stack | doc model, fill/mask/group/blend, CPU oracle + GPU compositor, undo |
 | M4 | Painting | brush engine, tablet pressure, projection painting |
 | M5 | Painting tools | projection, polyfill, smudge, clone, particle/physics brushes |

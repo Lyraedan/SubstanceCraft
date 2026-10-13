@@ -3,8 +3,11 @@
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use substancecraft_codecs::ImageF32;
-use substancecraft_doc::{Channel, Project, Scene, TextureSet, UvTile};
+use substancecraft_doc::{BlendMode, Channel, Layer, LayerStack, Mask, Project, Scene, TextureSet, UvTile};
 use substancecraft_render::{OrbitCamera, RenderSettings};
+
+/// The maximum number of undo steps kept.
+const MAX_UNDO: usize = 64;
 
 /// A session shared between the UI thread and background servers (control channel, MCP).
 pub type SharedSession = Arc<Mutex<Session>>;
@@ -46,6 +49,9 @@ pub struct Session {
     settings: RenderSettings,
     /// A pending request to save a window screenshot to this path (handled by the shell).
     screenshot_request: Option<String>,
+    /// Undo/redo stacks of texture-set snapshots (the layer data).
+    undo_stack: Vec<Vec<TextureSet>>,
+    redo_stack: Vec<Vec<TextureSet>>,
 }
 
 impl Default for Session {
@@ -69,6 +75,8 @@ impl Session {
             camera: OrbitCamera::default(),
             settings: RenderSettings::default(),
             screenshot_request: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
@@ -251,6 +259,214 @@ impl Session {
     /// Take the pending screenshot request, if any.
     pub fn take_screenshot_request(&mut self) -> Option<String> {
         self.screenshot_request.take()
+    }
+
+    /// The active texture set's layer stack.
+    pub fn layers(&self) -> Option<&LayerStack> {
+        self.project.active_set().map(|set| &set.layers)
+    }
+
+    fn snapshot(&self) -> Vec<TextureSet> {
+        self.project.texture_sets.clone()
+    }
+
+    /// Record the current texture sets for undo and clear the redo stack.
+    fn push_undo(&mut self) {
+        self.undo_stack.push(self.snapshot());
+        if self.undo_stack.len() > MAX_UNDO {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    /// Whether an undo is available.
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    /// Whether a redo is available.
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
+    }
+
+    /// Undo the last texture-set change.
+    pub fn undo(&mut self) -> bool {
+        let Some(sets) = self.undo_stack.pop() else { return false };
+        self.redo_stack.push(self.snapshot());
+        self.project.texture_sets = sets;
+        self.clamp_active_set();
+        self.bump_texture_sets();
+        true
+    }
+
+    /// Redo the last undone change.
+    pub fn redo(&mut self) -> bool {
+        let Some(sets) = self.redo_stack.pop() else { return false };
+        self.undo_stack.push(self.snapshot());
+        self.project.texture_sets = sets;
+        self.clamp_active_set();
+        self.bump_texture_sets();
+        true
+    }
+
+    fn clamp_active_set(&mut self) {
+        if self.project.active_texture_set >= self.project.texture_sets.len() {
+            self.project.active_texture_set = 0;
+        }
+    }
+
+    /// Add a layer on top of the active set's stack.
+    pub fn add_layer(&mut self, layer: Layer) {
+        self.push_undo();
+        if let Some(set) = self.project.active_set_mut() {
+            set.layers.push(layer);
+        }
+        self.bump_texture_sets();
+    }
+
+    /// Delete a layer by index from the active set.
+    pub fn delete_layer(&mut self, index: usize) -> bool {
+        let exists = self.project.active_set().is_some_and(|set| index < set.layers.len());
+        if !exists {
+            return false;
+        }
+        self.push_undo();
+        if let Some(set) = self.project.active_set_mut() {
+            set.layers.remove(index);
+        }
+        self.bump_texture_sets();
+        true
+    }
+
+    /// Apply a mutation to one layer. The caller must have validated the index.
+    fn edit_layer(&mut self, index: usize, mutate: impl FnOnce(&mut Layer)) {
+        if let Some(set) = self.project.active_set_mut()
+            && let Some(layer) = set.layers.get_mut(index)
+        {
+            mutate(layer);
+        }
+        self.bump_texture_sets();
+    }
+
+    fn has_layer(&self, index: usize) -> bool {
+        self.project.active_set().is_some_and(|set| index < set.layers.len())
+    }
+
+    /// Set a layer's visibility.
+    pub fn set_layer_visible(&mut self, index: usize, visible: bool) -> bool {
+        if !self.has_layer(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| layer.visible = visible);
+        true
+    }
+
+    /// Set a layer's opacity (`0..=1`).
+    pub fn set_layer_opacity(&mut self, index: usize, opacity: f32) -> bool {
+        if !self.has_layer(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| layer.opacity = opacity.clamp(0.0, 1.0));
+        true
+    }
+
+    /// Set a layer's blend mode.
+    pub fn set_layer_blend(&mut self, index: usize, blend: BlendMode) -> bool {
+        if !self.has_layer(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| layer.blend = blend);
+        true
+    }
+
+    /// Rename a layer.
+    pub fn set_layer_name(&mut self, index: usize, name: impl Into<String>) -> bool {
+        if !self.has_layer(index) {
+            return false;
+        }
+        let name = name.into();
+        self.push_undo();
+        self.edit_layer(index, |layer| layer.name = name.clone());
+        true
+    }
+
+    /// Set or clear a layer's mask.
+    pub fn set_layer_mask(&mut self, index: usize, mask: Option<Mask>) -> bool {
+        if !self.has_layer(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| layer.mask = mask);
+        true
+    }
+
+    /// Set a fill layer's colour. Returns false if the layer is missing or not a fill.
+    pub fn set_fill_color(&mut self, index: usize, color: [f32; 4]) -> bool {
+        if !self.layer_is_fill(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| {
+            if let substancecraft_doc::LayerKind::Fill { color: slot, .. } = &mut layer.kind {
+                *slot = color;
+            }
+        });
+        true
+    }
+
+    /// Set a fill layer's scalar value. Returns false if the layer is missing or not a fill.
+    pub fn set_fill_value(&mut self, index: usize, value: f32) -> bool {
+        if !self.layer_is_fill(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| {
+            if let substancecraft_doc::LayerKind::Fill { value: slot, .. } = &mut layer.kind {
+                *slot = value;
+            }
+        });
+        true
+    }
+
+    fn layer_is_fill(&self, index: usize) -> bool {
+        self.project
+            .active_set()
+            .and_then(|set| set.layers.get(index))
+            .is_some_and(|layer| matches!(layer.kind, substancecraft_doc::LayerKind::Fill { .. }))
+    }
+
+    /// Move a layer up or down in the stack.
+    pub fn move_layer(&mut self, index: usize, up: bool) -> bool {
+        let movable = if up { self.project.active_set().is_some_and(|set| index + 1 < set.layers.len()) } else { index > 0 && self.has_layer(index) };
+        if !movable {
+            return false;
+        }
+        self.push_undo();
+        if let Some(set) = self.project.active_set_mut() {
+            if up {
+                set.layers.move_up(index);
+            } else {
+                set.layers.move_down(index);
+            }
+        }
+        self.bump_texture_sets();
+        true
+    }
+
+    /// Wrap a layer in a new group.
+    pub fn group_layer(&mut self, index: usize, name: impl Into<String>) -> bool {
+        if !self.has_layer(index) {
+            return false;
+        }
+        self.push_undo();
+        if let Some(set) = self.project.active_set_mut() {
+            set.layers.group_layer(index, name);
+        }
+        self.bump_texture_sets();
+        true
     }
 }
 

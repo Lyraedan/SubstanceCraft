@@ -4037,6 +4037,8 @@ name = "substancecraft-gpu"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "pollster 1.0.1",
+ "substancecraft-compose",
  "substancecraft-doc",
  "substancecraft-raster",
  "thiserror 2.0.21",
@@ -4123,10 +4125,12 @@ dependencies = [
  "serde",
  "serde_json",
  "substancecraft-codecs",
+ "substancecraft-compose",
  "substancecraft-doc",
  "substancecraft-engine",
  "substancecraft-geom",
  "substancecraft-io",
+ "substancecraft-raster",
  "substancecraft-render",
  "thiserror 2.0.21",
 ]

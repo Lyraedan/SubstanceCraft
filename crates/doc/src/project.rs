@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use substancecraft_geom::Mesh;
 
 use crate::Scene;
+use crate::layers::LayerStack;
 
 /// The default texture resolution for a new set.
 pub const DEFAULT_RESOLUTION: u32 = 2048;
@@ -122,10 +123,13 @@ pub struct TextureSet {
     pub channels: Vec<Channel>,
     /// The UV tiles this set covers.
     pub uv_tiles: Vec<UvTile>,
+    /// The non-destructive layer stack.
+    pub layers: LayerStack,
 }
 
 impl TextureSet {
-    /// A new set with the default resolution, metal/rough channels and the base UV tile.
+    /// A new set with the default resolution, metal/rough channels, the base UV tile and an
+    /// empty layer stack.
     pub fn new(name: impl Into<String>, materials: Vec<u32>) -> Self {
         Self {
             name: name.into(),
@@ -134,6 +138,7 @@ impl TextureSet {
             resolution: DEFAULT_RESOLUTION,
             channels: Channel::metal_rough_default(),
             uv_tiles: vec![UvTile::DEFAULT],
+            layers: LayerStack::new(),
         }
     }
 

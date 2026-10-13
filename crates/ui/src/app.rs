@@ -9,7 +9,7 @@ use std::sync::Arc;
 use craft_settings::{Location, Settings, SettingsStore};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use substancecraft_doc::Channel;
+use substancecraft_doc::{BlendMode, Channel, LayerKind, Material, TextureSet};
 use substancecraft_engine::command::{CommandError, CommandOutcome, CommandRegistry};
 use substancecraft_engine::session::{SharedSession, lock};
 use substancecraft_render::Projection;
@@ -35,6 +35,36 @@ impl Settings for Prefs {
 const DISPLAY_MODES: &[(&str, &str)] =
     &[("base_color", "Base"), ("normal", "Normal"), ("roughness", "Rough"), ("metalness", "Metal"), ("uv_checker", "UV"), ("wireframe", "Wire")];
 
+/// A flattened view of one layer for the UI.
+struct LayerView {
+    name: String,
+    type_id: &'static str,
+    visible: bool,
+    opacity: f32,
+    blend: BlendMode,
+    mask: Option<f32>,
+    color: Option<[f32; 4]>,
+    value: Option<f32>,
+}
+
+/// Build a UI view of a layer.
+fn layer_view(layer: &substancecraft_doc::Layer) -> LayerView {
+    let (color, value) = match &layer.kind {
+        LayerKind::Fill { color, value } => (Some(*color), Some(*value)),
+        _ => (None, None),
+    };
+    LayerView {
+        name: layer.name.clone(),
+        type_id: layer.kind.type_id(),
+        visible: layer.visible,
+        opacity: layer.opacity,
+        blend: layer.blend,
+        mask: layer.mask.map(|mask| mask.coverage()),
+        color,
+        value,
+    }
+}
+
 /// The main application.
 pub struct StudioApp {
     registry: Arc<CommandRegistry>,
@@ -45,6 +75,8 @@ pub struct StudioApp {
     pending_screenshot: Option<PathBuf>,
     rename_buffer: String,
     rename_index: usize,
+    active_layer: usize,
+    layer_preview: Option<(u64, egui::TextureHandle)>,
 }
 
 impl StudioApp {
@@ -68,6 +100,8 @@ impl StudioApp {
             pending_screenshot: None,
             rename_buffer: String::new(),
             rename_index: usize::MAX,
+            active_layer: usize::MAX,
+            layer_preview: None,
         };
         app.report(app.dispatch("scene.load_default", &Value::Null));
         app
@@ -271,14 +305,157 @@ impl StudioApp {
     }
 
     fn layer_stack_panel(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(4.0);
+        let (views, revision, set, material, can_undo, can_redo) = {
+            let session = lock(&self.session);
+            let project = session.project();
+            let views = project.active_set().map(|set| set.layers.layers.iter().map(layer_view).collect::<Vec<_>>()).unwrap_or_default();
+            let set = project.active_set().cloned();
+            let material = project
+                .active_set()
+                .and_then(|set| set.materials.first())
+                .and_then(|id| project.scene.materials.get(*id as usize))
+                .cloned()
+                .unwrap_or_default();
+            (views, session.texture_set_revision(), set, material, session.can_undo(), session.can_redo())
+        };
+
+        if views.is_empty() {
+            self.active_layer = usize::MAX;
+        } else if self.active_layer >= views.len() {
+            self.active_layer = views.len() - 1;
+        }
+
+        ui.add_space(2.0);
         ui.horizontal(|ui| {
             ui.strong("Layer Stack");
             ui.separator();
-            ui.label(egui::RichText::new("M3").color(Tokens::DARK.text_dim));
+            if ui.button("+ Fill").clicked() {
+                self.report(self.dispatch("layer.add_fill", &Value::Null));
+                self.active_layer = usize::MAX;
+            }
+            if ui.button("+ Group").clicked() {
+                self.report(self.dispatch("layer.add_group", &Value::Null));
+                self.active_layer = usize::MAX;
+            }
+            let has_selection = self.active_layer != usize::MAX;
+            if ui.add_enabled(has_selection, egui::Button::new("Delete")).clicked() {
+                self.report(self.dispatch("layer.delete", &json!({ "index": self.active_layer })));
+            }
+            if ui.add_enabled(has_selection, egui::Button::new("Up")).clicked() {
+                self.report(self.dispatch("layer.move", &json!({ "index": self.active_layer, "direction": "up" })));
+                self.active_layer = self.active_layer.saturating_add(1);
+            }
+            if ui.add_enabled(has_selection, egui::Button::new("Down")).clicked() {
+                self.report(self.dispatch("layer.move", &json!({ "index": self.active_layer, "direction": "down" })));
+                self.active_layer = self.active_layer.saturating_sub(1);
+            }
+            if ui.add_enabled(has_selection, egui::Button::new("Group")).clicked() {
+                self.report(self.dispatch("layer.group", &json!({ "index": self.active_layer })));
+            }
+            ui.separator();
+            if ui.add_enabled(can_undo, egui::Button::new("Undo")).clicked() {
+                self.report(self.dispatch("edit.undo", &Value::Null));
+            }
+            if ui.add_enabled(can_redo, egui::Button::new("Redo")).clicked() {
+                self.report(self.dispatch("edit.redo", &Value::Null));
+            }
         });
         ui.separator();
-        ui.label(egui::RichText::new("Fill / paint / effect layers land here").color(Tokens::DARK.text_dim));
+
+        if let Some(set) = &set {
+            self.update_layer_preview(ui.ctx(), revision, set, &material);
+        }
+
+        // The nested columns closures record intended commands; they are dispatched afterwards so
+        // no closure holds a mutable borrow of `self`.
+        let mut actions: Vec<(&'static str, Value)> = Vec::new();
+        let mut active_layer = self.active_layer;
+        let preview = self.layer_preview.as_ref().map(|(_, handle)| handle.clone());
+
+        ui.columns(2, |columns| {
+            egui::ScrollArea::vertical().id_salt("sc.layers.list").show(&mut columns[0], |ui| {
+                for (index, view) in views.iter().enumerate().rev() {
+                    ui.horizontal(|ui| {
+                        if ui.small_button(if view.visible { "V" } else { "–" }).clicked() {
+                            actions.push(("layer.set_visible", json!({ "index": index, "visible": !view.visible })));
+                        }
+                        let label = format!("{}  [{}]", view.name, view.type_id);
+                        if ui.selectable_label(index == active_layer, label).clicked() {
+                            active_layer = index;
+                        }
+                    });
+                }
+                if views.is_empty() {
+                    ui.label(egui::RichText::new("No layers — add a fill layer").color(Tokens::DARK.text_dim));
+                }
+            });
+
+            let column = &mut columns[1];
+            if let Some(texture) = &preview {
+                column.add(egui::Image::new(texture).fit_to_exact_size(egui::vec2(96.0, 96.0)));
+            }
+            if let Some(view) = views.get(active_layer) {
+                let index = active_layer;
+                column.horizontal(|ui| {
+                    ui.label("Blend");
+                    egui::ComboBox::from_id_salt("sc.layer.blend").selected_text(view.blend.label()).show_ui(ui, |ui| {
+                        for mode in BlendMode::ALL {
+                            if ui.selectable_label(mode == view.blend, mode.label()).clicked() {
+                                actions.push(("layer.set_blend", json!({ "index": index, "mode": mode.id() })));
+                            }
+                        }
+                    });
+                });
+                let mut opacity = view.opacity;
+                if column.add(egui::Slider::new(&mut opacity, 0.0..=1.0).text("Opacity")).changed() {
+                    actions.push(("layer.set_opacity", json!({ "index": index, "opacity": opacity })));
+                }
+                if let Some(color) = view.color {
+                    let mut rgba = color;
+                    column.horizontal(|ui| {
+                        ui.label("Color");
+                        if ui.color_edit_button_rgba_unmultiplied(&mut rgba).changed() {
+                            actions.push(("layer.set_fill_color", json!({ "index": index, "color": rgba })));
+                        }
+                    });
+                }
+                if let Some(value) = view.value {
+                    let mut scalar = value;
+                    if column.add(egui::Slider::new(&mut scalar, 0.0..=1.0).text("Value")).changed() {
+                        actions.push(("layer.set_fill_value", json!({ "index": index, "value": scalar })));
+                    }
+                }
+                column.horizontal(|ui| {
+                    let mut masked = view.mask.is_some();
+                    if ui.checkbox(&mut masked, "Mask").changed() {
+                        let value = if masked { json!(1.0) } else { Value::Null };
+                        actions.push(("layer.set_mask", json!({ "index": index, "value": value })));
+                    }
+                    if let Some(mask) = view.mask {
+                        let mut scalar = mask;
+                        if ui.add(egui::Slider::new(&mut scalar, 0.0..=1.0)).changed() {
+                            actions.push(("layer.set_mask", json!({ "index": index, "value": scalar })));
+                        }
+                    }
+                });
+            }
+        });
+
+        self.active_layer = active_layer;
+        for (id, params) in actions {
+            let _ = self.dispatch(id, &params);
+        }
+    }
+
+    fn update_layer_preview(&mut self, ctx: &egui::Context, revision: u64, set: &TextureSet, material: &Material) {
+        if self.layer_preview.as_ref().is_some_and(|(cached, _)| *cached == revision) {
+            return;
+        }
+        let image = substancecraft_compose::evaluate_base_color(set, material, 96, 96);
+        let size = [image.width as usize, image.height as usize];
+        let color = egui::ColorImage::from_rgba_unmultiplied(size, &image.to_rgba8());
+        let handle = ctx.load_texture("sc.layer_preview", color, egui::TextureOptions::LINEAR);
+        self.layer_preview = Some((revision, handle));
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {

@@ -4,28 +4,28 @@ Milestones and the current focus. The one-page summary is `ROADMAP.md`.
 
 ## Current focus
 
-**M3 — Layer stack.**
+**M4 — Painting.**
 
-M2 is complete (mesh split into texture sets by material; list/select/rename; per-set resolution,
-channels and UV tiles; solo isolation). M3 builds the non-destructive layer system:
+M3 is complete (non-destructive layer stack, CPU/GPU compositors, layer UI, undo/redo). M4 adds the
+brush engine and paints into layer targets:
 
-1. Extend the document model (`substancecraft-doc`) with a per-texture-set **layer stack**: fill,
-   paint, effect and group nodes, each with an optional mask.
-2. **Blend modes** and per-layer opacity, evaluated per channel.
-3. A **CPU compositor** (`substancecraft-compose`) as the oracle, and the **GPU compositor**
-   (`substancecraft-gpu`) with wgpu render targets; validate the GPU against the CPU.
-4. A **layer-stack UI** (add/remove/reorder/group/visibility/opacity/blend).
-5. **Undo/redo** through commands.
+1. Brush engine in `substancecraft-paint`: dabs, spacing, size/flow/opacity, pressure and tilt
+   curves, jitter, symmetry.
+2. Projection painting: map screen strokes through the mesh UVs into the active layer's channel
+   target.
+3. Tablet input (`substancecraft-tablet`) for pressure/tilt; wire it into the viewport.
+4. Feed the composited channels into the 3D viewport material so the painted result shows live.
+5. Painterly controls: eraser, colour picker, stroke smoothing, brush presets.
 
 See `docs/gaps.md` for the ranked work list.
 
-## M2 deliverables (reference) — done
+## M3 deliverables (reference) — done
 
-1. `Project`/`TextureSet`/`Channel`/`UvTile` in `doc`; split by material id. ✅
-2. Per-set resolution, channel set and UDIM tile detection/editing. ✅
-3. Texture-set commands (list/select/rename/resolution/channel/uv-tile/solo). ✅
-4. Texture-set list UI with selection, rename, channels, resolution, tiles, solo. ✅
-5. Viewport isolation of the active set (solo). ✅
+1. `doc`: `Layer`, `LayerKind` (fill/paint/effect/group), `Mask`, `BlendMode`, `LayerStack`. ✅
+2. CPU compositor oracle (per channel) with tests. ✅
+3. GPU compositor for flat fill stacks, validated against the CPU. ✅
+4. Layer commands (add/delete/move/group/property/undo/redo). ✅
+5. Layer-stack UI with a live composite preview. ✅
 
 Acceptance: `cargo run -p substancecraft` opens the window, imports a sample glTF/OBJ, orbits with a
 real camera, PBR-shades it with IBL and tone mapping, switches display modes — all via commands; the

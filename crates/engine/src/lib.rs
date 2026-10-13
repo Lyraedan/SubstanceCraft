@@ -9,6 +9,7 @@
 
 pub mod command;
 pub mod commands;
+pub mod layer_cmds;
 pub mod scene_cmds;
 pub mod session;
 pub mod texture_set_cmds;

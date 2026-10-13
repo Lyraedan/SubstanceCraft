@@ -4,21 +4,32 @@ Where SubstanceCraft stands against Adobe Substance 3D Painter, dimension by dim
 lines carry the date; update the dimension when your work moves it. SubstanceCraft is a clean-room
 reimplementation: parity means comparable behaviour and results, never copied code or assets.
 
-_Last reviewed: 2026-10-13 (M2 complete)._
+_Last reviewed: 2026-10-13 (M3 complete)._
 
 | Dimension | Weight | Status | Notes |
 |---|---|---|---|
 | Project & texture-set workflow | high | 35% | Split by material, list/select/rename, per-set resolution + channels + UV tiles, solo (M2). |
-| Layer stack & blending | high | 0% | Not started; M3. |
+| Layer stack & blending | high | 45% | Fill/group layers, masks, 8 blend modes, opacity, visibility, undo/redo; CPU + GPU compositor (M3). |
 | Painting engine | high | 0% | Not started; M4–M5. |
 | Procedural content (generators/filters/smart materials) | high | 0% | Not started; M6. |
 | Baking (mesh maps + cage) | high | 0% | Not started; M7. |
 | Export (presets, channels, UDIM, OpenPBR) | high | 0% | Not started; M8. |
 | Viewport & PBR preview | medium | 85% | Import, camera (persp/ortho), metal/rough PBR, HDRI IBL, tone mapping, display modes, grid, wireframe, snapshot. |
 | Shaders (OpenPBR / ASM) | medium | 0% | M9. |
-| Automation & scripting | medium | 25% | 25 commands; control channel drives the live viewport, texture sets and screenshots. |
+| Automation & scripting | medium | 30% | 41 commands; control channel drives viewport, texture sets, layers and undo/redo, plus screenshots. |
 | Native project format | medium | 0% | M10. |
 | Performance | medium | n/a | No measurements yet. |
+
+## Layer stack & blending (M3) — complete
+
+- [x] Document model: fill / paint / effect / group layer kinds, per-layer mask + opacity + visibility + blend mode.
+- [x] 8 blend modes (normal, multiply, screen, overlay, add, subtract, darken, lighten).
+- [x] CPU compositor oracle (per channel), fully unit-tested.
+- [x] GPU compositor for flat fill stacks, validated against an independent CPU reference.
+- [x] Layer-stack UI: add/delete/reorder/group, visibility, opacity, blend, fill colour/value, mask, and a live composite preview.
+- [x] Undo/redo through commands (snapshot-based).
+- [ ] GPU compositor for groups/effects/painted layers.
+- [ ] Composited channels driving the 3D viewport (lands with painting, M4).
 
 ## Texture sets & UV tiles (M2) — complete
 

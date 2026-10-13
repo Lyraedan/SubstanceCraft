@@ -16,4 +16,8 @@ substancecraft-doc.workspace = true
 substancecraft-raster.workspace = true
 bytemuck.workspace = true
 wgpu.workspace = true
+pollster.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+substancecraft-compose.workspace = true
