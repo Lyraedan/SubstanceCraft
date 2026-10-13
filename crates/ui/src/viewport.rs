@@ -3,6 +3,7 @@
 
 use substancecraft_engine::session::{Session, SharedSession, lock};
 use substancecraft_geom::glam::Vec2;
+use substancecraft_paint::ToolKind;
 use substancecraft_render::ViewportRenderer;
 
 /// The active viewport tool.
@@ -34,6 +35,8 @@ pub enum ViewportAction {
         u: f32,
         /// V coordinate.
         v: f32,
+        /// Texture texels per screen pixel.
+        scale: f32,
     },
     /// Continue a paint stroke at UV.
     StrokeExtend {
@@ -44,6 +47,11 @@ pub enum ViewportAction {
     },
     /// End the current paint stroke.
     StrokeEnd,
+    /// Fill the UV island containing a triangle.
+    Polyfill {
+        /// The hit triangle index.
+        triangle: u32,
+    },
 }
 
 /// The composite resolution uploaded to the viewport.
@@ -132,14 +140,24 @@ impl Viewport {
         if tool == ViewportTool::Paint {
             if response.is_pointer_button_down_on() {
                 if let Some(position) = response.interact_pointer_pos() {
-                    let session = lock(session);
-                    if let Some(uv) = pick_uv(&session, position, rect, aspect) {
+                    let (active_tool, hit) = {
+                        let session = lock(session);
+                        (session.tool(), pick_hit(&session, position, rect, aspect))
+                    };
+                    if let Some((hit, scale)) = hit {
+                        if active_tool == ToolKind::Polyfill {
+                            if !self.painting {
+                                self.painting = true;
+                                return Some(ViewportAction::Polyfill { triangle: hit.triangle });
+                            }
+                            return None;
+                        }
                         let begin = !self.painting;
                         self.painting = true;
                         return Some(if begin {
-                            ViewportAction::StrokeBegin { u: uv[0], v: uv[1] }
+                            ViewportAction::StrokeBegin { u: hit.uv.x, v: hit.uv.y, scale }
                         } else {
-                            ViewportAction::StrokeExtend { u: uv[0], v: uv[1] }
+                            ViewportAction::StrokeExtend { u: hit.uv.x, v: hit.uv.y }
                         });
                     }
                 }
@@ -226,14 +244,22 @@ impl Viewport {
     }
 }
 
-/// Cast a picking ray through a screen position and return the mesh UV under it.
-fn pick_uv(session: &Session, position: egui::Pos2, rect: egui::Rect, aspect: f32) -> Option<[f32; 2]> {
+/// Cast a picking ray through a screen position, returning the hit and the texels-per-screen-pixel
+/// scale for screen-space brush sizing.
+fn pick_hit(session: &Session, position: egui::Pos2, rect: egui::Rect, aspect: f32) -> Option<(substancecraft_geom::Hit, f32)> {
     if rect.width() <= 0.0 || rect.height() <= 0.0 {
         return None;
     }
     let ndc_x = (position.x - rect.left()) / rect.width() * 2.0 - 1.0;
     let ndc_y = 1.0 - (position.y - rect.top()) / rect.height() * 2.0;
-    let ray = session.camera().ray(Vec2::new(ndc_x, ndc_y), aspect);
-    let hit = substancecraft_geom::raycast(&session.scene().mesh, &ray)?;
-    Some([hit.uv.x, hit.uv.y])
+    let camera = session.camera();
+    let ray = camera.ray(Vec2::new(ndc_x, ndc_y), aspect);
+    let mesh = &session.scene().mesh;
+    let hit = substancecraft_geom::raycast(mesh, &ray)?;
+
+    let world_per_px = 2.0 * hit.distance * (camera.fov_y * 0.5).tan() / rect.height().max(1.0);
+    let uv_per_world = substancecraft_geom::raycast::uv_density(mesh, hit.triangle);
+    let texels = session.paint_resolution() as f32;
+    let scale = (world_per_px * uv_per_world * texels).max(0.0);
+    Some((hit, scale))
 }

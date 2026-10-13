@@ -15,9 +15,8 @@ normal, roughness, metalness, UV checker, wireframe); ground grid and sky/enviro
 wgpu viewport hosted in egui; offscreen snapshot plus live `ui.screenshot`; pinned CC0 assets via
 `cargo xtask assets`.
 
-**M4 — Painting: complete.** Brush engine (dabs, spacing, hardness, size/opacity pressure, symmetry),
-raycast projection painting into layer targets with one undo step per stroke, and the composited base
-colour fed back into the 3D viewport. Brush panel and Paint/Orbit tool. 51 commands.
+**M5 — Painting tools: complete.** Brush, eraser, smudge, clone and UV-island polyfill; screen-space
+brush sizing, jitter, symmetry; active-layer target; tool palette and per-tool brush controls. 58 commands.
 
 ## Milestones
 
@@ -28,7 +27,8 @@ colour fed back into the 3D viewport. Brush panel and Paint/Orbit tool. 51 comma
 | **M2** | Texture sets & UV tiles | split by material, per-set channels/resolution/UDIM, solo ✅ |
 | **M3** | Layer stack | fill/group layers, masks, blend modes, CPU + GPU compositor, undo ✅ |
 | **M4** | Painting | brush engine, projection painting, live composited base colour ✅ |
-| M5 | Painting tools | projection, polyfill, smudge, clone, particle/physics brushes |
+| **M5** | Painting tools | brush/eraser/smudge/clone/polyfill, screen sizing, active layer ✅ |
+| M6 | Procedural content | generators/filters, noise library, smart materials, shelf |
 | M3 | Layer stack | doc model, fill/mask/group/blend, CPU oracle + GPU compositor, undo |
 | M4 | Painting | brush engine, tablet pressure, projection painting |
 | M5 | Painting tools | projection, polyfill, smudge, clone, particle/physics brushes |

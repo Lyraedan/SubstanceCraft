@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use substancecraft_doc::{BlendMode, Channel, LayerKind, Material, TextureSet};
 use substancecraft_engine::command::{CommandError, CommandOutcome, CommandRegistry};
 use substancecraft_engine::session::{SharedSession, lock};
-use substancecraft_paint::Symmetry;
+use substancecraft_paint::{Symmetry, ToolKind};
 use substancecraft_render::Projection;
 
 use crate::state::UiState;
@@ -142,6 +142,13 @@ impl StudioApp {
             }
             if ui.selectable_label(self.tool == ViewportTool::Orbit, "Orbit").clicked() {
                 self.tool = ViewportTool::Orbit;
+            }
+            ui.separator();
+            let active_tool = lock(&self.session).tool();
+            for tool in ToolKind::ALL {
+                if ui.selectable_label(active_tool == tool, tool.label()).clicked() {
+                    self.report(self.dispatch("tool.set", &json!({ "tool": tool.id() })));
+                }
             }
             ui.separator();
 
@@ -312,15 +319,26 @@ impl StudioApp {
         ui.add_space(4.0);
         ui.strong("Brush");
         ui.separator();
-        let (radius, hardness, spacing, opacity, color, symmetry) = {
+        let (tool, size, hardness, spacing, opacity, jitter, smudge, clone_offset, color, symmetry) = {
             let session = lock(&self.session);
             let brush = *session.brush();
-            (brush.radius_px, brush.hardness, brush.spacing, brush.opacity, brush.color, brush.symmetry)
+            (
+                session.tool(),
+                brush.screen_radius_px,
+                brush.hardness,
+                brush.spacing,
+                brush.opacity,
+                brush.jitter,
+                brush.smudge,
+                brush.clone_offset,
+                brush.color,
+                brush.symmetry,
+            )
         };
 
-        let mut radius_value = radius;
-        if ui.add(egui::Slider::new(&mut radius_value, 1.0..=256.0).text("Size")).changed() {
-            let _ = self.dispatch("brush.set_radius", &json!({ "radius": radius_value }));
+        let mut size_value = size;
+        if ui.add(egui::Slider::new(&mut size_value, 1.0..=256.0).text("Size")).changed() {
+            let _ = self.dispatch("brush.set_screen_radius", &json!({ "radius": size_value }));
         }
         let mut hardness_value = hardness;
         if ui.add(egui::Slider::new(&mut hardness_value, 0.0..=1.0).text("Hardness")).changed() {
@@ -333,6 +351,28 @@ impl StudioApp {
         let mut opacity_value = opacity;
         if ui.add(egui::Slider::new(&mut opacity_value, 0.0..=1.0).text("Opacity")).changed() {
             let _ = self.dispatch("brush.set_opacity", &json!({ "opacity": opacity_value }));
+        }
+        let mut jitter_value = jitter;
+        if ui.add(egui::Slider::new(&mut jitter_value, 0.0..=1.0).text("Jitter")).changed() {
+            let _ = self.dispatch("brush.set_jitter", &json!({ "jitter": jitter_value }));
+        }
+        if tool == ToolKind::Smudge {
+            let mut smudge_value = smudge;
+            if ui.add(egui::Slider::new(&mut smudge_value, 0.0..=1.0).text("Strength")).changed() {
+                let _ = self.dispatch("brush.set_smudge", &json!({ "value": smudge_value }));
+            }
+        }
+        if tool == ToolKind::Clone {
+            let mut dx = clone_offset[0];
+            let mut dy = clone_offset[1];
+            ui.horizontal(|ui| {
+                ui.label("Offset");
+                let changed_x = ui.add(egui::DragValue::new(&mut dx).speed(1.0)).changed();
+                let changed_y = ui.add(egui::DragValue::new(&mut dy).speed(1.0)).changed();
+                if changed_x || changed_y {
+                    let _ = self.dispatch("brush.set_clone_offset", &json!({ "dx": dx, "dy": dy }));
+                }
+            });
         }
         let mut rgba = color;
         ui.horizontal(|ui| {
@@ -352,19 +392,22 @@ impl StudioApp {
             });
         });
         ui.add_space(4.0);
-        ui.label(egui::RichText::new("Left-drag paints on the model; right-drag pans.").color(Tokens::DARK.text_dim));
+        ui.label(egui::RichText::new("Paint tool: left-drag paints; right-drag pans.").color(Tokens::DARK.text_dim));
     }
 
     /// Turn a viewport paint action into a command.
     fn handle_paint_action(&mut self, action: ViewportAction) {
         match action {
-            ViewportAction::StrokeBegin { u, v } => self.report(self.dispatch("paint.stroke_begin", &json!({ "u": u, "v": v }))),
+            ViewportAction::StrokeBegin { u, v, scale } => {
+                self.report(self.dispatch("paint.stroke_begin", &json!({ "u": u, "v": v, "scale": scale })))
+            }
             ViewportAction::StrokeExtend { u, v } => {
                 let _ = self.dispatch("paint.stroke_extend", &json!({ "u": u, "v": v }));
             }
             ViewportAction::StrokeEnd => {
                 let _ = self.dispatch("paint.stroke_end", &Value::Null);
             }
+            ViewportAction::Polyfill { triangle } => self.report(self.dispatch("paint.polyfill", &json!({ "triangle": triangle }))),
         }
     }
 
@@ -446,6 +489,7 @@ impl StudioApp {
                         let label = format!("{}  [{}]", view.name, view.type_id);
                         if ui.selectable_label(index == active_layer, label).clicked() {
                             active_layer = index;
+                            actions.push(("layer.select", json!({ "index": index })));
                         }
                     });
                 }

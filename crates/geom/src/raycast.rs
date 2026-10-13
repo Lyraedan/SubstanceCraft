@@ -101,6 +101,32 @@ fn interpolate2(a: Option<&Vec2>, b: Option<&Vec2>, c: Option<&Vec2>, w: f32, u:
     a * w + b * u + c * v
 }
 
+/// The UV distance per world-unit for a triangle, averaged over its edges. Useful for converting a
+/// screen-space brush size into texture space. Defaults to `1.0` for a degenerate triangle.
+pub fn uv_density(mesh: &Mesh, triangle: u32) -> f32 {
+    let triangles = mesh.indices.as_chunks::<3>().0;
+    let Some(indices) = triangles.get(triangle as usize) else { return 1.0 };
+    let mut total = 0.0;
+    let mut count = 0.0;
+    for (i, j) in [(0, 1), (1, 2), (2, 0)] {
+        let (Some(p0), Some(p1), Some(uv0), Some(uv1)) = (
+            mesh.positions.get(indices[i] as usize),
+            mesh.positions.get(indices[j] as usize),
+            mesh.uvs.get(indices[i] as usize),
+            mesh.uvs.get(indices[j] as usize),
+        ) else {
+            continue;
+        };
+        let world = (*p1 - *p0).length();
+        let uv = (*uv1 - *uv0).length();
+        if world > 1e-6 {
+            total += uv / world;
+            count += 1.0;
+        }
+    }
+    if count > 0.0 { total / count } else { 1.0 }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

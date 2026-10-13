@@ -10,6 +10,7 @@ use crate::session::Session;
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("layer.list", "List Layers", "Window", "no parameters", list),
+        CommandSpec::new("layer.select", "Select Layer", "Window", "index: number | null", select),
         CommandSpec::new("layer.add_fill", "Add Fill Layer", "Window", "name?: string, color?: [r,g,b,a], value?: number", add_fill),
         CommandSpec::new("layer.add_paint", "Add Paint Layer", "Window", "name?: string", add_paint),
         CommandSpec::new("layer.add_group", "Add Group", "Window", "name?: string", add_group),
@@ -61,6 +62,21 @@ fn list(session: &mut Session, _params: &Value) -> CommandResult {
         })
         .collect();
     Ok(CommandOutcome::data(Value::Array(layers)))
+}
+
+fn select(session: &mut Session, params: &Value) -> CommandResult {
+    let index = match params.get("index") {
+        None | Some(Value::Null) => None,
+        Some(value) => Some(value.as_u64().ok_or_else(|| invalid("layer.select", "index must be a number or null"))? as usize),
+    };
+    if let Some(index) = index {
+        let count = session.layers().map(|stack| stack.len()).unwrap_or(0);
+        if index >= count {
+            return Err(invalid("layer.select", &format!("index {index} is out of range")));
+        }
+    }
+    session.set_active_layer(index);
+    Ok(CommandOutcome::message("layer selected"))
 }
 
 fn add_fill(session: &mut Session, params: &Value) -> CommandResult {

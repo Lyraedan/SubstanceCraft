@@ -4,26 +4,25 @@ Milestones and the current focus. The one-page summary is `ROADMAP.md`.
 
 ## Current focus
 
-**M5 — Painting tools.**
+**M6 — Procedural content.**
 
-M4 is complete (brush engine, projection painting, live composited base colour). M5 broadens the tool
-set and the paint path:
+M5 is complete (brush/eraser/smudge/clone/polyfill, screen-space sizing, active-layer target). M6 adds
+procedural content and the material shelf:
 
-1. Projection tool (paint an image through a placed plane), polygon fill, smudge and clone.
-2. Particle / physics brushes.
-3. Eraser tool and an active-layer target in the session.
-4. Native pen pressure/tilt and screen-space brush sizing.
-5. Streamed/GPU painting for large strokes.
+1. Generators and filters (`substancecraft-material`): noise (Perlin/Simplex/Voronoi), grunge,
+   levels, blur, distance, curvature.
+2. Effect layers that apply a generator/filter to the layers below (currently pass-through).
+3. A material/noise shelf UI with previews.
+4. Smart materials and smart masks (saved layer-stack snippets).
 
 See `docs/gaps.md` for the ranked work list.
 
-## M4 deliverables (reference) — done
+## M5 deliverables (reference) — done
 
-1. `paint`: brush engine (dabs, spacing, hardness, pressure, symmetry). ✅
-2. `geom`: ray/triangle picking (`Ray`, `raycast`, `Hit`). ✅
-3. `engine`: brush + stroke state, paint commands, per-stroke undo. ✅
-4. `render`: camera picking ray and a composited base-colour texture sampled by UV. ✅
-5. `ui`: Paint/Orbit tool, brush panel, pointer projection painting, live composited result. ✅
+1. `paint`: brush/eraser/smudge/clone stamps and UV-island `polyfill`; `ToolKind`. ✅
+2. `geom`: `uv_density` for screen-space sizing. ✅
+3. `engine`: tool state, active-layer target, per-tool strokes, `paint.polyfill`, tool/brush commands. ✅
+4. `ui`: tool palette, per-tool brush controls, screen-space sizing, polyfill dispatch. ✅
 
 Acceptance: `cargo run -p substancecraft` opens the window, imports a sample glTF/OBJ, orbits with a
 real camera, PBR-shades it with IBL and tone mapping, switches display modes — all via commands; the

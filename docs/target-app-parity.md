@@ -4,21 +4,31 @@ Where SubstanceCraft stands against Adobe Substance 3D Painter, dimension by dim
 lines carry the date; update the dimension when your work moves it. SubstanceCraft is a clean-room
 reimplementation: parity means comparable behaviour and results, never copied code or assets.
 
-_Last reviewed: 2026-10-13 (M4 complete)._
+_Last reviewed: 2026-10-13 (M5 complete)._
 
 | Dimension | Weight | Status | Notes |
 |---|---|---|---|
 | Project & texture-set workflow | high | 35% | Split by material, list/select/rename, per-set resolution + channels + UV tiles, solo (M2). |
 | Layer stack & blending | high | 45% | Fill/group layers, masks, 8 blend modes, opacity, visibility, undo/redo; CPU + GPU compositor (M3). |
-| Painting engine | high | 40% | Brush engine (dabs/spacing/pressure/symmetry), raycast projection paint, live base-colour on the model (M4). |
+| Painting engine | high | 62% | Brush/eraser/smudge/clone/polyfill, screen-space sizing, symmetry, jitter, active-layer target, live composited result (M4–M5). |
 | Procedural content (generators/filters/smart materials) | high | 0% | Not started; M6. |
 | Baking (mesh maps + cage) | high | 0% | Not started; M7. |
 | Export (presets, channels, UDIM, OpenPBR) | high | 0% | Not started; M8. |
 | Viewport & PBR preview | medium | 88% | Import, camera, PBR, HDRI IBL, tone mapping, display modes, grid, wireframe, composited base colour, snapshot. |
 | Shaders (OpenPBR / ASM) | medium | 0% | M9. |
-| Automation & scripting | medium | 35% | 51 commands; control channel drives viewport, texture sets, layers, brushes, painting and undo. |
+| Automation & scripting | medium | 35% | 58 commands; control channel drives viewport, texture sets, layers, brushes, tools, painting and undo. |
 | Native project format | medium | 0% | M10. |
 | Performance | medium | n/a | No measurements yet. |
+
+## Painting tools (M5) — complete
+
+- [x] Tools: brush, eraser, smudge, clone, polyfill (UV-island fill).
+- [x] Screen-space brush sizing (texels-per-screen-pixel from the hit triangle's UV density).
+- [x] Active-layer target (`layer.select`) plus paint-target fallback.
+- [x] Jitter (particle-like scatter) and clone offset.
+- [x] Tool palette and per-tool brush controls in the UI.
+- [ ] Native pen pressure/tilt (`substancecraft-tablet`).
+- [ ] Physics brushes; streamed/GPU painting; BVH raycast.
 
 ## Painting (M4) — complete
 

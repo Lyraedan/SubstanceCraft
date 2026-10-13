@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use substancecraft_codecs::ImageF32;
 use substancecraft_doc::{BlendMode, Channel, Layer, LayerKind, LayerStack, Mask, Project, Scene, TextureSet, UvTile};
-use substancecraft_paint::{BrushSettings, StrokeState};
+use substancecraft_paint::{BrushSettings, StrokeState, ToolKind, clone_stamp, erase_stamp, paint_stamp, smudge_stamp};
 use substancecraft_raster::RasterImage;
 use substancecraft_render::{OrbitCamera, RenderSettings};
 
@@ -62,6 +62,14 @@ pub struct Session {
     brush: BrushSettings,
     /// The in-progress stroke, if the pointer is down.
     stroke: Option<StrokeState>,
+    /// The texel-per-screen-pixel scale for the current stroke (0 = texture-space sizing).
+    stroke_scale: f32,
+    /// The pre-stroke image snapshot used by clone and smudge.
+    stroke_source: Option<RasterImage>,
+    /// The active tool.
+    tool: ToolKind,
+    /// The selected layer index in the active set.
+    active_layer: Option<usize>,
 }
 
 impl Default for Session {
@@ -89,6 +97,10 @@ impl Session {
             redo_stack: Vec::new(),
             brush: BrushSettings::default(),
             stroke: None,
+            stroke_scale: 0.0,
+            stroke_source: None,
+            tool: ToolKind::default(),
+            active_layer: None,
         }
     }
 
@@ -491,18 +503,55 @@ impl Session {
         &mut self.brush
     }
 
+    /// The active tool.
+    pub fn tool(&self) -> ToolKind {
+        self.tool
+    }
+
+    /// Select the active tool.
+    pub fn set_tool(&mut self, tool: ToolKind) {
+        self.tool = tool;
+    }
+
+    /// The selected layer index in the active texture set, if any.
+    pub fn active_layer_index(&self) -> Option<usize> {
+        self.active_layer
+    }
+
+    /// Select a layer (or clear the selection).
+    pub fn set_active_layer(&mut self, index: Option<usize>) {
+        self.active_layer = index;
+    }
+
     /// The working paint resolution for the active set (capped).
-    fn paint_resolution(&self) -> u32 {
+    pub fn paint_resolution(&self) -> u32 {
         self.project.active_set().map(|set| set.resolution.clamp(64, MAX_PAINT_RESOLUTION)).unwrap_or(256)
     }
 
-    /// Ensure the top layer of the active set is a paint layer with an image at `resolution`.
-    fn ensure_paint_layer(&mut self, resolution: u32) {
-        let Some(set) = self.project.active_set_mut() else { return };
-        if !set.layers.layers.last().is_some_and(|layer| matches!(layer.kind, LayerKind::Paint { .. })) {
-            set.layers.push(Layer::paint("Paint"));
+    /// The paint layer that strokes target: the active layer if it is a paint layer, else the
+    /// topmost paint layer.
+    fn paint_target_index(&self) -> Option<usize> {
+        let set = self.project.active_set()?;
+        if let Some(index) = self.active_layer
+            && set.layers.get(index).is_some_and(|layer| matches!(layer.kind, LayerKind::Paint { .. }))
+        {
+            return Some(index);
         }
-        if let Some(layer) = set.layers.layers.last_mut()
+        set.layers.layers.iter().rposition(|layer| matches!(layer.kind, LayerKind::Paint { .. }))
+    }
+
+    /// Ensure a paint layer with an image at `resolution` exists and is the target.
+    fn ensure_paint_target(&mut self, resolution: u32) {
+        let target = self.paint_target_index();
+        let Some(set) = self.project.active_set_mut() else { return };
+        let index = match target {
+            Some(index) => index,
+            None => {
+                set.layers.push(Layer::paint("Paint"));
+                set.layers.len() - 1
+            }
+        };
+        if let Some(layer) = set.layers.get_mut(index)
             && let LayerKind::Paint { image } = &mut layer.kind
         {
             let needs = image.as_ref().is_none_or(|img| img.width != resolution || img.height != resolution);
@@ -510,36 +559,43 @@ impl Session {
                 *image = Some(RasterImage::filled(resolution, resolution, [0.0, 0.0, 0.0, 0.0]));
             }
         }
+        self.active_layer = Some(index);
     }
 
-    /// The top paint layer's image, mutably.
+    /// The active paint target image, mutably.
     fn active_paint_image_mut(&mut self) -> Option<&mut RasterImage> {
+        let index = self.paint_target_index()?;
         let set = self.project.active_set_mut()?;
-        for layer in set.layers.layers.iter_mut().rev() {
-            if let LayerKind::Paint { image: Some(image) } = &mut layer.kind {
-                return Some(image);
-            }
+        match &mut set.layers.get_mut(index)?.kind {
+            LayerKind::Paint { image: Some(image) } => Some(image),
+            _ => None,
         }
-        None
     }
 
-    /// Begin a paint stroke at UV `(u, v)`. Ensures a paint layer exists and records one undo step.
-    pub fn begin_stroke(&mut self, u: f32, v: f32, pressure: f32) {
+    /// A snapshot of the active paint target image (for clone/smudge sources).
+    fn active_paint_image_snapshot(&self) -> Option<RasterImage> {
+        let index = self.paint_target_index()?;
+        let set = self.project.active_set()?;
+        match &set.layers.get(index)?.kind {
+            LayerKind::Paint { image: Some(image) } => Some(image.clone()),
+            _ => None,
+        }
+    }
+
+    /// Begin a paint stroke at UV `(u, v)`. Ensures a paint target exists and records one undo step.
+    /// `scale` is the number of texture texels per screen pixel (0 disables screen-space sizing).
+    pub fn begin_stroke(&mut self, u: f32, v: f32, pressure: f32, scale: f32) {
         if self.project.active_set().is_none() {
             return;
         }
         self.push_undo();
         let resolution = self.paint_resolution();
-        self.ensure_paint_layer(resolution);
-
-        let brush = self.brush;
-        let mut stroke = self.stroke.take().unwrap_or_default();
-        if let Some(image) = self.active_paint_image_mut() {
-            let center = uv_to_pixels(u, v, image.width, image.height);
-            stroke.begin(image, &brush, center, pressure);
-        }
-        self.stroke = Some(stroke);
-        self.bump_texture_sets();
+        self.ensure_paint_target(resolution);
+        let tool = self.tool;
+        self.stroke_source = if matches!(tool, ToolKind::Clone | ToolKind::Smudge) { self.active_paint_image_snapshot() } else { None };
+        self.stroke_scale = scale;
+        self.stroke = Some(StrokeState::default());
+        self.stamp_stroke(u, v, pressure);
     }
 
     /// Continue the current paint stroke to UV `(u, v)`.
@@ -547,24 +603,78 @@ impl Session {
         if self.stroke.is_none() {
             return;
         }
-        let brush = self.brush;
-        let mut stroke = self.stroke.take().unwrap_or_default();
-        if let Some(image) = self.active_paint_image_mut() {
-            let center = uv_to_pixels(u, v, image.width, image.height);
-            stroke.extend(image, &brush, center, pressure);
-        }
-        self.stroke = Some(stroke);
-        self.bump_texture_sets();
+        self.stamp_stroke(u, v, pressure);
     }
 
     /// End the current paint stroke.
     pub fn end_stroke(&mut self) {
         self.stroke = None;
+        self.stroke_source = None;
     }
 
     /// Whether a stroke is in progress.
     pub fn is_stroking(&self) -> bool {
         self.stroke.is_some()
+    }
+
+    /// Place the dabs for one stroke point and stamp the active tool.
+    fn stamp_stroke(&mut self, u: f32, v: f32, pressure: f32) {
+        let brush = self.brush;
+        let scale = self.stroke_scale;
+        let tool = self.tool;
+        let radius = brush.radius_at(pressure, scale);
+        let alpha = brush.alpha_at(pressure);
+        let step = (brush.spacing.clamp(0.01, 1.0) * radius).max(0.5);
+
+        let mut stroke = self.stroke.take().unwrap_or_default();
+        let mut positions = Vec::new();
+        if let Some(image) = self.active_paint_image_mut() {
+            let center = uv_to_pixels(u, v, image.width, image.height);
+            stroke.dabs(center, step, &mut positions);
+        }
+        self.stroke = Some(stroke);
+
+        let source = self.stroke_source.take();
+        if let Some(image) = self.active_paint_image_mut() {
+            let (width, height) = (image.width as f32, image.height as f32);
+            for position in positions {
+                for center in brush.symmetry.centers(position, width, height) {
+                    match tool {
+                        ToolKind::Brush => paint_stamp(image, center, radius, brush.hardness, brush.color, alpha),
+                        ToolKind::Eraser => erase_stamp(image, center, radius, brush.hardness, alpha),
+                        ToolKind::Clone => {
+                            if let Some(source) = &source {
+                                clone_stamp(image, source, center, radius, brush.hardness, brush.clone_offset, alpha);
+                            }
+                        }
+                        ToolKind::Smudge => {
+                            if let Some(source) = &source {
+                                smudge_stamp(image, source, center, position, radius, brush.hardness, brush.smudge);
+                            }
+                        }
+                        ToolKind::Polyfill => {}
+                    }
+                }
+            }
+        }
+        self.stroke_source = source;
+        self.bump_texture_sets();
+    }
+
+    /// Fill the UV island containing `triangle` on the active paint target.
+    pub fn polyfill(&mut self, triangle: u32) {
+        if self.project.active_set().is_none() {
+            return;
+        }
+        self.push_undo();
+        let resolution = self.paint_resolution();
+        self.ensure_paint_target(resolution);
+        let color = self.brush.color;
+        let mesh = self.project.scene.mesh.clone();
+        if let Some(image) = self.active_paint_image_mut() {
+            let _ = substancecraft_paint::polyfill(&mesh, image, triangle, color);
+        }
+        self.bump_texture_sets();
     }
 }
 

@@ -68,6 +68,16 @@ impl RasterImage {
         self.pixel(x.min(self.width - 1), y.min(self.height - 1))
     }
 
+    /// Nearest-neighbour sample by pixel coordinates (clamped to the image edges).
+    pub fn sample_pixel(&self, position: [f32; 2]) -> [f32; 4] {
+        if self.is_empty() {
+            return [0.0, 0.0, 0.0, 0.0];
+        }
+        let x = (position[0].floor().max(0.0) as u32).min(self.width - 1);
+        let y = (position[1].floor().max(0.0) as u32).min(self.height - 1);
+        self.pixel(x, y)
+    }
+
     /// Convert to tightly packed RGBA8 with sRGB gamma encoding and clamping (for previews/export).
     pub fn to_rgba8(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(self.pixels.len() * 4);

@@ -1,7 +1,7 @@
 //! Paint commands: stroke begin/extend/end and brush settings.
 
 use serde_json::Value;
-use substancecraft_paint::Symmetry;
+use substancecraft_paint::{Symmetry, ToolKind};
 
 use crate::command::{CommandError, CommandOutcome, CommandRegistry, CommandResult, CommandSpec};
 use crate::session::Session;
@@ -9,13 +9,19 @@ use crate::session::Session;
 /// The paint commands.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("paint.stroke_begin", "Begin Stroke", "Brush", "u: number, v: number, pressure?: number", stroke_begin),
+        CommandSpec::new("tool.set", "Select Tool", "Brush", "tool: brush | eraser | smudge | clone | polyfill", set_tool),
+        CommandSpec::new("paint.stroke_begin", "Begin Stroke", "Brush", "u: number, v: number, pressure?: number, scale?: number", stroke_begin),
         CommandSpec::new("paint.stroke_extend", "Extend Stroke", "Brush", "u: number, v: number, pressure?: number", stroke_extend),
         CommandSpec::new("paint.stroke_end", "End Stroke", "Brush", "no parameters", stroke_end),
+        CommandSpec::new("paint.polyfill", "Polyfill Island", "Brush", "triangle: number", polyfill),
         CommandSpec::new("brush.set_radius", "Set Brush Radius", "Brush", "radius: number (texture pixels)", set_radius),
+        CommandSpec::new("brush.set_screen_radius", "Set Screen Radius", "Brush", "radius: number (screen pixels)", set_screen_radius),
         CommandSpec::new("brush.set_hardness", "Set Brush Hardness", "Brush", "hardness: number (0..1)", set_hardness),
         CommandSpec::new("brush.set_spacing", "Set Brush Spacing", "Brush", "spacing: number (0.01..1)", set_spacing),
         CommandSpec::new("brush.set_opacity", "Set Brush Opacity", "Brush", "opacity: number (0..1)", set_opacity),
+        CommandSpec::new("brush.set_jitter", "Set Brush Jitter", "Brush", "jitter: number (0..1)", set_jitter),
+        CommandSpec::new("brush.set_smudge", "Set Smudge Strength", "Brush", "value: number (0..1)", set_smudge),
+        CommandSpec::new("brush.set_clone_offset", "Set Clone Offset", "Brush", "dx: number, dy: number", set_clone_offset),
         CommandSpec::new("brush.set_color", "Set Brush Color", "Brush", "color: [r,g,b,a]", set_color),
         CommandSpec::new("brush.set_symmetry", "Set Brush Symmetry", "Brush", "mode: none | horizontal | vertical | both", set_symmetry),
         CommandSpec::new("brush.set_pressure", "Set Brush Pressure", "Brush", "size?: bool, opacity?: bool", set_pressure),
@@ -43,9 +49,13 @@ fn pressure(params: &Value) -> f32 {
     params.get("pressure").and_then(Value::as_f64).map(|value| (value as f32).clamp(0.0, 1.0)).unwrap_or(1.0)
 }
 
+fn scale(params: &Value) -> f32 {
+    params.get("scale").and_then(Value::as_f64).map(|value| (value as f32).max(0.0)).unwrap_or(0.0)
+}
+
 fn stroke_begin(session: &mut Session, params: &Value) -> CommandResult {
     let (u, v) = required_uv("paint.stroke_begin", params)?;
-    session.begin_stroke(u, v, pressure(params));
+    session.begin_stroke(u, v, pressure(params), scale(params));
     Ok(CommandOutcome::message("stroke begin"))
 }
 
@@ -60,6 +70,20 @@ fn stroke_end(session: &mut Session, _params: &Value) -> CommandResult {
     Ok(CommandOutcome::message("stroke end"))
 }
 
+fn polyfill(session: &mut Session, params: &Value) -> CommandResult {
+    let triangle = params.get("triangle").and_then(Value::as_u64).ok_or_else(|| invalid("paint.polyfill", "expected a numeric \"triangle\""))?;
+    session.polyfill(triangle as u32);
+    Ok(CommandOutcome::message(format!("polyfilled triangle {triangle}")))
+}
+
+fn set_tool(session: &mut Session, params: &Value) -> CommandResult {
+    let id = params.get("tool").and_then(Value::as_str).ok_or_else(|| invalid("tool.set", "expected a \"tool\" string"))?;
+    let tool = ToolKind::from_id(id).ok_or_else(|| invalid("tool.set", &format!("unknown tool: {id}")))?;
+    session.set_tool(tool);
+    session.set_status(format!("tool: {}", tool.label()));
+    Ok(CommandOutcome::message(tool.label()))
+}
+
 fn number(command: &str, params: &Value, key: &str) -> Result<f32, CommandError> {
     match params.get(key).and_then(Value::as_f64) {
         Some(value) if value.is_finite() => Ok(value as f32),
@@ -71,6 +95,31 @@ fn set_radius(session: &mut Session, params: &Value) -> CommandResult {
     let radius = number("brush.set_radius", params, "radius")?.clamp(1.0, 2048.0);
     session.brush_mut().radius_px = radius;
     Ok(CommandOutcome::message(format!("brush radius: {radius:.0}")))
+}
+
+fn set_screen_radius(session: &mut Session, params: &Value) -> CommandResult {
+    let radius = number("brush.set_screen_radius", params, "radius")?.clamp(1.0, 512.0);
+    session.brush_mut().screen_radius_px = radius;
+    Ok(CommandOutcome::message(format!("screen radius: {radius:.0}")))
+}
+
+fn set_jitter(session: &mut Session, params: &Value) -> CommandResult {
+    let jitter = number("brush.set_jitter", params, "jitter")?.clamp(0.0, 1.0);
+    session.brush_mut().jitter = jitter;
+    Ok(CommandOutcome::message(format!("brush jitter: {jitter:.2}")))
+}
+
+fn set_smudge(session: &mut Session, params: &Value) -> CommandResult {
+    let value = number("brush.set_smudge", params, "value")?.clamp(0.0, 1.0);
+    session.brush_mut().smudge = value;
+    Ok(CommandOutcome::message(format!("smudge: {value:.2}")))
+}
+
+fn set_clone_offset(session: &mut Session, params: &Value) -> CommandResult {
+    let dx = number("brush.set_clone_offset", params, "dx")?;
+    let dy = number("brush.set_clone_offset", params, "dy")?;
+    session.brush_mut().clone_offset = [dx, dy];
+    Ok(CommandOutcome::message(format!("clone offset: ({dx:.0}, {dy:.0})")))
 }
 
 fn set_hardness(session: &mut Session, params: &Value) -> CommandResult {
@@ -167,6 +216,23 @@ mod tests {
         assert!(set_symmetry(&mut session, &json!({ "mode": "diagonal" })).is_err());
         set_symmetry(&mut session, &json!({ "mode": "both" })).expect("symmetry");
         assert_eq!(session.brush().symmetry, Symmetry::Both);
+    }
+
+    #[test]
+    fn tool_selection_validates() {
+        let mut session = Session::new("test");
+        assert!(set_tool(&mut session, &json!({ "tool": "eraser" })).is_ok());
+        assert_eq!(session.tool(), ToolKind::Eraser);
+        assert!(set_tool(&mut session, &json!({ "tool": "magic" })).is_err());
+    }
+
+    #[test]
+    fn clone_offset_and_polyfill_validate() {
+        let mut session = Session::new("test");
+        assert!(set_clone_offset(&mut session, &json!({ "dx": 10, "dy": -5 })).is_ok());
+        assert_eq!(session.brush().clone_offset, [10.0, -5.0]);
+        assert!(set_clone_offset(&mut session, &json!({ "dx": 10 })).is_err());
+        assert!(polyfill(&mut session, &Value::Null).is_err());
     }
 
     #[test]
