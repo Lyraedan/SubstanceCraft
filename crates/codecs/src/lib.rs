@@ -104,6 +104,20 @@ pub fn load_exr(path: impl AsRef<Path>) -> Result<ImageF32, CodecError> {
     Ok(ImageF32 { width: size.width() as u32, height: size.height() as u32, pixels })
 }
 
+/// Encode tightly packed RGBA8 bytes to a PNG file.
+pub fn save_png(path: impl AsRef<Path>, width: u32, height: u32, rgba: &[u8]) -> Result<(), CodecError> {
+    if width == 0 || height == 0 {
+        return Err(CodecError::Empty);
+    }
+    let expected = (width as usize).saturating_mul(height as usize).saturating_mul(4);
+    if rgba.len() < expected {
+        return Err(CodecError::Decode(format!("expected {expected} bytes, got {}", rgba.len())));
+    }
+    let buffer = image::RgbaImage::from_raw(width, height, rgba[..expected].to_vec())
+        .ok_or_else(|| CodecError::Decode("could not build the image buffer".to_string()))?;
+    buffer.save(path.as_ref()).map_err(|err| CodecError::Decode(err.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

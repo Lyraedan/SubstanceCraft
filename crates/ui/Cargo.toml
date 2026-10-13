@@ -17,6 +17,7 @@ substancecraft-geom.workspace = true
 substancecraft-raster.workspace = true
 substancecraft-paint.workspace = true
 substancecraft-compose.workspace = true
+substancecraft-bake.workspace = true
 substancecraft-render.workspace = true
 substancecraft-engine.workspace = true
 craft-ui.workspace = true

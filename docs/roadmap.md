@@ -4,25 +4,25 @@ Milestones and the current focus. The one-page summary is `ROADMAP.md`.
 
 ## Current focus
 
-**M7 — Baking.**
+**M8 — Export.**
 
-M6 is complete (generators/filters, effect layers, shelf). M7 adds mesh-map baking:
+M7 is complete (BVH bakers, high-poly import, bake panel). M8 exports the composited texture set:
 
-1. `substancecraft-bake`: ray-based bakers onto the low-poly UV layout — tangent-space normal, ambient
-   occlusion, curvature, position, thickness, world-space normal, material ID.
-2. Cage generation (implicit) for high-to-low projection.
-3. Baking-mode UI (baker selection, settings, bake log) and a `file.import_mesh` high-poly slot.
-4. Validated against the CPU oracle; reproducible at several resolutions.
+1. `substancecraft-io`: export each channel of a texture set to 8/16-bit PNG/TGA and 16/32-bit EXR at
+   a chosen resolution.
+2. Export presets (Unreal, Unity, glTF, OpenPBR, spec/gloss) and per-channel packing.
+3. Naming conventions (`$textureSet_$channel`) and output templates/subfolders.
+4. UDIM / UV-tile export.
+5. A round-trip test: exported maps re-import to identical values.
 
 See `docs/gaps.md` for the ranked work list.
 
-## M6 deliverables (reference) — done
+## M7 deliverables (reference) — done
 
-1. `doc`: `Generator`, `Filter`, `Effect` data + `LayerKind::Effect`. ✅
-2. `material`: Perlin/Simplex/Voronoi/White generators; levels/blur/invert/contrast/brightness filters. ✅
-3. `compose`: effect layers (generator fill, filter transform) with opacity. ✅
-4. `engine`: `layer.add_generator` / `layer.add_filter`. ✅
-5. `ui`: shelf panel with generators and filters. ✅
+1. `geom`: `Bvh` (median-split build, stack traversal) with a brute-force cross-check. ✅
+2. `bake`: position, world/tangent normal, AO, thickness, curvature, material ID. ✅
+3. `engine`: high-poly import, bake settings, `bake.run/list/save`. ✅
+4. `ui`: bake panel (resolution, samples, high-poly, run, per-map save) and log. ✅
 
 Acceptance: `cargo run -p substancecraft` opens the window, imports a sample glTF/OBJ, orbits with a
 real camera, PBR-shades it with IBL and tone mapping, switches display modes — all via commands; the

@@ -2,6 +2,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use substancecraft_bake::{BakeMap, BakeSettings, Baker};
 use substancecraft_codecs::ImageF32;
 use substancecraft_doc::{BlendMode, Channel, Layer, LayerKind, LayerStack, Mask, Project, Scene, TextureSet, UvTile};
 use substancecraft_paint::{BrushSettings, StrokeState, ToolKind, clone_stamp, erase_stamp, paint_stamp, smudge_stamp};
@@ -70,6 +71,18 @@ pub struct Session {
     tool: ToolKind,
     /// The selected layer index in the active set.
     active_layer: Option<usize>,
+    /// An imported high-poly mesh for baking tangent-space normals.
+    high_poly: Option<Arc<substancecraft_geom::Mesh>>,
+    /// Bumped when the high-poly changes.
+    high_poly_revision: u64,
+    /// Bake parameters.
+    bake_settings: BakeSettings,
+    /// The most recent baked maps.
+    baked: Vec<(BakeMap, RasterImage)>,
+    /// A log of the last bake.
+    bake_log: Vec<String>,
+    /// Bumped when baked maps change.
+    bake_revision: u64,
 }
 
 impl Default for Session {
@@ -101,6 +114,12 @@ impl Session {
             stroke_source: None,
             tool: ToolKind::default(),
             active_layer: None,
+            high_poly: None,
+            high_poly_revision: 1,
+            bake_settings: BakeSettings::default(),
+            baked: Vec::new(),
+            bake_log: Vec::new(),
+            bake_revision: 1,
         }
     }
 
@@ -675,6 +694,81 @@ impl Session {
             let _ = substancecraft_paint::polyfill(&mesh, image, triangle, color);
         }
         self.bump_texture_sets();
+    }
+
+    /// The imported high-poly mesh, if any.
+    pub fn high_poly(&self) -> Option<&Arc<substancecraft_geom::Mesh>> {
+        self.high_poly.as_ref()
+    }
+
+    /// Set (or clear) the high-poly mesh used for tangent-space normal baking.
+    pub fn set_high_poly(&mut self, mesh: Option<substancecraft_geom::Mesh>) {
+        self.high_poly = mesh.map(Arc::new);
+        self.high_poly_revision = self.high_poly_revision.saturating_add(1);
+        self.touch();
+    }
+
+    /// Bumped when the high-poly changes.
+    pub fn high_poly_revision(&self) -> u64 {
+        self.high_poly_revision
+    }
+
+    /// Bake parameters.
+    pub fn bake_settings(&self) -> &BakeSettings {
+        &self.bake_settings
+    }
+
+    /// Bake parameters, mutably.
+    pub fn bake_settings_mut(&mut self) -> &mut BakeSettings {
+        &mut self.bake_settings
+    }
+
+    /// The most recent baked maps.
+    pub fn baked_maps(&self) -> &[(BakeMap, RasterImage)] {
+        &self.baked
+    }
+
+    /// The last bake log.
+    pub fn bake_log(&self) -> &[String] {
+        &self.bake_log
+    }
+
+    /// Bumped when baked maps change.
+    pub fn bake_revision(&self) -> u64 {
+        self.bake_revision
+    }
+
+    /// The baked image for a map, if present.
+    pub fn baked_map(&self, map: BakeMap) -> Option<&RasterImage> {
+        self.baked.iter().find(|(kind, _)| *kind == map).map(|(_, image)| image)
+    }
+
+    /// Bake every mesh map for the current scene, replacing any previous results.
+    pub fn run_bake(&mut self) {
+        let started = std::time::Instant::now();
+        let settings = self.bake_settings;
+        let results: Vec<(BakeMap, RasterImage)> = {
+            let baker = Baker::new(&self.project.scene.mesh, self.high_poly.as_deref());
+            BakeMap::ALL.iter().map(|&map| (map, baker.bake(map, &settings))).collect()
+        };
+        let has_high_poly = self.high_poly.is_some();
+
+        self.bake_log.clear();
+        self.bake_log.push(format!("baked {} maps at {}²", results.len(), settings.resolution));
+        if !has_high_poly {
+            self.bake_log.push("no high-poly imported: tangent-space normal is flat".to_string());
+        }
+        self.bake_log.push(format!("took {:.0} ms", started.elapsed().as_secs_f64() * 1000.0));
+        self.baked = results;
+        self.bake_revision = self.bake_revision.saturating_add(1);
+        self.set_status(format!("baked {} maps", self.baked.len()));
+        self.touch();
+    }
+
+    /// Save a baked map to a PNG. Returns a message on failure.
+    pub fn save_baked(&self, map: BakeMap, path: &str) -> Result<(), String> {
+        let image = self.baked_map(map).ok_or_else(|| format!("no baked {} map", map.id()))?;
+        substancecraft_codecs::save_png(path, image.width, image.height, &image.to_rgba8_linear()).map_err(|err| err.to_string())
     }
 }
 

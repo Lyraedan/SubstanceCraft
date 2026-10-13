@@ -2,42 +2,47 @@
 
 Every known shortfall, ranked. The work list to pick from. New entries go at the top of their tier.
 
-_Last reviewed: 2026-10-13 (M6 complete)._
+_Last reviewed: 2026-10-13 (M7 complete)._
+
+## Baking polish (deferred from M7)
+
+1. **No explicit/implicit cage mesh** export or skew correction; projection uses a fixed normal offset.
+2. **No edge padding / dilation** of the baked result across UV seams.
+3. **Per-map settings** (AO distance, thickness distance, cage size) are baked from shared defaults.
+4. **Baked maps are not yet wired into generators/masks** (no curvature/AO-driven grunge input).
+5. **CPU baker**; a GPU baker is a later optimisation.
 
 ## Procedural-content polish (deferred from M6)
 
-1. **No smart materials / smart masks** (saved layer-stack snippets) yet.
-2. **Filter/generator parameters are not editable in the UI** beyond defaults (seed/scale/radius are
-   settable through commands only).
-3. **No grunge library, curvature/AO-driven generators, or directional/scratches content.**
-4. **Effect layers are CPU-composited**; the GPU compositor reports them unsupported.
+6. **No smart materials / smart masks.**
+7. **Filter/generator parameters are not editable in the UI** beyond defaults.
+8. **No grunge library or directional content.**
+9. **Effect layers are CPU-composited.**
 
 ## Painting polish (deferred from M4–M5)
 
-5. **No native pen pressure/tilt.** Strokes use pressure 1.0.
-6. **No physics brushes**; jitter provides scatter only.
-7. **CPU painting.** Dabs stamp on the CPU; a streamed/GPU paint path is a later optimisation.
-8. **Brute-force raycast.** Picking tests every triangle; needs a BVH for large meshes.
-9. **Painting is not UDIM-aware**; polyfill fills a UV island.
-10. **Smudge/clone sources are a pre-stroke snapshot.**
+10. **No native pen pressure/tilt.**
+11. **No physics brushes.**
+12. **CPU painting**; streamed/GPU paint is later.
+13. **Painting is not UDIM-aware.**
 
-## Layer-stack / texture-set polish
+## Layer-stack / texture-set / viewport polish
 
-11. **GPU compositor is limited to flat fill stacks.**
-12. **Masks are constants.**
-13. **Undo snapshots the whole texture-set list** (including paint images).
-14. **No per-set shader instances or material reassignment.**
-15. **AO/height display modes**; grid alignment; camera persistence; prefiltered IBL; selection outline.
+14. **GPU compositor is limited to flat fill stacks.**
+15. **Masks are constants.**
+16. **Undo snapshots the whole texture-set list.**
+17. **No per-set shader instances or material reassignment.**
+18. **AO/height display modes, grid alignment, camera persistence, prefiltered IBL, selection outline.**
 
 ## Next milestones
 
-16. **No baking.** M7. **No export.** M8.
+19. **No export.** M8. **No OpenPBR/ASM shaders** (M9). **No native project format** (M10).
 
 ## Infrastructure
 
-17. **No perf harness** (`cargo xtask perf`, M12). **No corpus tests.**
-18. **No MCP server.** The JSON control channel is the only agent interface.
+20. **No perf harness** (`cargo xtask perf`, M12). **No corpus tests.**
+21. **No MCP server.** The JSON control channel is the only agent interface.
 
 ## Documentation
 
-19. Parity matrices beyond viewport/texture sets/layers/painting/procedural/automation are still 0%.
+22. Parity matrices beyond viewport/texture sets/layers/painting/procedural/baking/automation are still 0%.

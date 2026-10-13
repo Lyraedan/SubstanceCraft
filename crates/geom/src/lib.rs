@@ -7,12 +7,14 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod bounds;
+pub mod bvh;
 pub mod mesh;
 pub mod primitives;
 pub mod raycast;
 pub mod tangents;
 
 pub use bounds::Bounds;
+pub use bvh::Bvh;
 pub use glam;
 pub use mesh::{Mesh, Submesh};
 pub use raycast::{Hit, Ray, raycast};

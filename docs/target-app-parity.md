@@ -4,21 +4,31 @@ Where SubstanceCraft stands against Adobe Substance 3D Painter, dimension by dim
 lines carry the date; update the dimension when your work moves it. SubstanceCraft is a clean-room
 reimplementation: parity means comparable behaviour and results, never copied code or assets.
 
-_Last reviewed: 2026-10-13 (M6 complete)._
+_Last reviewed: 2026-10-13 (M7 complete)._
 
 | Dimension | Weight | Status | Notes |
 |---|---|---|---|
 | Project & texture-set workflow | high | 35% | Split by material, list/select/rename, per-set resolution + channels + UV tiles, solo (M2). |
 | Layer stack & blending | high | 45% | Fill/group layers, masks, 8 blend modes, opacity, visibility, undo/redo; CPU + GPU compositor (M3). |
 | Painting engine | high | 62% | Brush/eraser/smudge/clone/polyfill, screen-space sizing, symmetry, jitter, active-layer target, live composited result (M4–M5). |
-| Procedural content (generators/filters/smart materials) | high | 40% | Perlin/Simplex/Voronoi/White generators, levels/blur/invert/contrast/brightness filters, effect layers, shelf previews (M6). |
-| Baking (mesh maps + cage) | high | 0% | Not started; M7. |
+| Procedural content (generators/filters/smart materials) | high | 40% | Perlin/Simplex/Voronoi/White generators, levels/blur/invert/contrast/brightness filters, effect layers, shelf (M6). |
+| Baking (mesh maps + cage) | high | 50% | BVH-accelerated bakers: position, world/tangent normal, AO, thickness, curvature, material ID; high-poly import; save to PNG (M7). |
 | Export (presets, channels, UDIM, OpenPBR) | high | 0% | Not started; M8. |
 | Viewport & PBR preview | medium | 88% | Import, camera, PBR, HDRI IBL, tone mapping, display modes, grid, wireframe, composited base colour, snapshot. |
 | Shaders (OpenPBR / ASM) | medium | 0% | M9. |
-| Automation & scripting | medium | 35% | 60 commands; control channel drives viewport, texture sets, layers, brushes, tools, paint, effects and undo. |
+| Automation & scripting | medium | 35% | 67 commands; control channel drives viewport, texture sets, layers, brushes, tools, paint, effects, baking and undo. |
 | Native project format | medium | 0% | M10. |
 | Performance | medium | n/a | No measurements yet. |
+
+## Baking (M7) — complete
+
+- [x] BVH-accelerated ray queries (`geom::Bvh`) with a brute-force cross-check test.
+- [x] Bakers: position, world-space normal, tangent-space normal (low→high), ambient occlusion, thickness, curvature, material ID.
+- [x] High-poly mesh import; per-texel UV rasterisation with interpolated attributes.
+- [x] Bake panel (resolution, AO samples, high-poly, run, per-map save) and a bake log; `bake.save` writes PNGs.
+- [ ] Explicit/implicit cage mesh export; skew correction; edge padding; per-map custom settings.
+- [ ] Bake to the texture-set channel images used by generators/masks.
+- [ ] GPU baker (CPU today).
 
 ## Procedural content (M6) — complete
 

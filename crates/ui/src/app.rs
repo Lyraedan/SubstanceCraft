@@ -9,6 +9,7 @@ use std::sync::Arc;
 use craft_settings::{Location, Settings, SettingsStore};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use substancecraft_bake::BakeMap;
 use substancecraft_doc::{BlendMode, Channel, Filter, Generator, LayerKind, Material, TextureSet};
 use substancecraft_engine::command::{CommandError, CommandOutcome, CommandRegistry};
 use substancecraft_engine::session::{SharedSession, lock};
@@ -78,6 +79,7 @@ pub struct StudioApp {
     rename_index: usize,
     active_layer: usize,
     layer_preview: Option<(u64, egui::TextureHandle)>,
+    bake_preview: Option<(u64, egui::TextureHandle)>,
     tool: ViewportTool,
 }
 
@@ -104,6 +106,7 @@ impl StudioApp {
             rename_index: usize::MAX,
             active_layer: usize::MAX,
             layer_preview: None,
+            bake_preview: None,
             tool: ViewportTool::default(),
         };
         app.report(app.dispatch("scene.load_default", &Value::Null));
@@ -316,12 +319,27 @@ impl StudioApp {
     }
 
     fn shelf_panel(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(4.0);
-        ui.strong("Brush");
-        ui.separator();
-        let (tool, size, hardness, spacing, opacity, jitter, smudge, clone_offset, color, symmetry) = {
+        let (
+            tool,
+            size,
+            hardness,
+            spacing,
+            opacity,
+            jitter,
+            smudge,
+            clone_offset,
+            color,
+            symmetry,
+            resolution,
+            samples,
+            high_poly,
+            bake_revision,
+            first_bake,
+            log,
+        ) = {
             let session = lock(&self.session);
             let brush = *session.brush();
+            let first_bake = session.baked_maps().first().map(|(_, image)| (image.width, image.height, image.to_rgba8_linear()));
             (
                 session.tool(),
                 brush.screen_radius_px,
@@ -333,84 +351,160 @@ impl StudioApp {
                 brush.clone_offset,
                 brush.color,
                 brush.symmetry,
+                session.bake_settings().resolution,
+                session.bake_settings().samples,
+                session.high_poly().is_some(),
+                session.bake_revision(),
+                first_bake,
+                session.bake_log().to_vec(),
             )
         };
 
-        let mut size_value = size;
-        if ui.add(egui::Slider::new(&mut size_value, 1.0..=256.0).text("Size")).changed() {
-            let _ = self.dispatch("brush.set_screen_radius", &json!({ "radius": size_value }));
+        // Refresh the bake preview texture before drawing so no closure needs `&mut self`.
+        if let Some((width, height, bytes)) = &first_bake
+            && self.bake_preview.as_ref().is_none_or(|(revision, _)| *revision != bake_revision)
+        {
+            let color = egui::ColorImage::from_rgba_unmultiplied([*width as usize, *height as usize], bytes);
+            let handle = ui.ctx().load_texture("sc.bake_preview", color, egui::TextureOptions::LINEAR);
+            self.bake_preview = Some((bake_revision, handle));
         }
-        let mut hardness_value = hardness;
-        if ui.add(egui::Slider::new(&mut hardness_value, 0.0..=1.0).text("Hardness")).changed() {
-            let _ = self.dispatch("brush.set_hardness", &json!({ "hardness": hardness_value }));
-        }
-        let mut spacing_value = spacing;
-        if ui.add(egui::Slider::new(&mut spacing_value, 0.01..=1.0).text("Spacing")).changed() {
-            let _ = self.dispatch("brush.set_spacing", &json!({ "spacing": spacing_value }));
-        }
-        let mut opacity_value = opacity;
-        if ui.add(egui::Slider::new(&mut opacity_value, 0.0..=1.0).text("Opacity")).changed() {
-            let _ = self.dispatch("brush.set_opacity", &json!({ "opacity": opacity_value }));
-        }
-        let mut jitter_value = jitter;
-        if ui.add(egui::Slider::new(&mut jitter_value, 0.0..=1.0).text("Jitter")).changed() {
-            let _ = self.dispatch("brush.set_jitter", &json!({ "jitter": jitter_value }));
-        }
-        if tool == ToolKind::Smudge {
-            let mut smudge_value = smudge;
-            if ui.add(egui::Slider::new(&mut smudge_value, 0.0..=1.0).text("Strength")).changed() {
-                let _ = self.dispatch("brush.set_smudge", &json!({ "value": smudge_value }));
+        let bake_preview = self.bake_preview.as_ref().map(|(_, handle)| handle.clone());
+        let has_bake = first_bake.is_some();
+
+        let mut actions: Vec<(&'static str, Value)> = Vec::new();
+        egui::ScrollArea::vertical().id_salt("sc.shelf").show(ui, |ui| {
+            ui.add_space(4.0);
+            ui.strong("Brush");
+            ui.separator();
+
+            let mut size_value = size;
+            if ui.add(egui::Slider::new(&mut size_value, 1.0..=256.0).text("Size")).changed() {
+                actions.push(("brush.set_screen_radius", json!({ "radius": size_value })));
             }
-        }
-        if tool == ToolKind::Clone {
-            let mut dx = clone_offset[0];
-            let mut dy = clone_offset[1];
+            let mut hardness_value = hardness;
+            if ui.add(egui::Slider::new(&mut hardness_value, 0.0..=1.0).text("Hardness")).changed() {
+                actions.push(("brush.set_hardness", json!({ "hardness": hardness_value })));
+            }
+            let mut spacing_value = spacing;
+            if ui.add(egui::Slider::new(&mut spacing_value, 0.01..=1.0).text("Spacing")).changed() {
+                actions.push(("brush.set_spacing", json!({ "spacing": spacing_value })));
+            }
+            let mut opacity_value = opacity;
+            if ui.add(egui::Slider::new(&mut opacity_value, 0.0..=1.0).text("Opacity")).changed() {
+                actions.push(("brush.set_opacity", json!({ "opacity": opacity_value })));
+            }
+            let mut jitter_value = jitter;
+            if ui.add(egui::Slider::new(&mut jitter_value, 0.0..=1.0).text("Jitter")).changed() {
+                actions.push(("brush.set_jitter", json!({ "jitter": jitter_value })));
+            }
+            if tool == ToolKind::Smudge {
+                let mut smudge_value = smudge;
+                if ui.add(egui::Slider::new(&mut smudge_value, 0.0..=1.0).text("Strength")).changed() {
+                    actions.push(("brush.set_smudge", json!({ "value": smudge_value })));
+                }
+            }
+            if tool == ToolKind::Clone {
+                let mut dx = clone_offset[0];
+                let mut dy = clone_offset[1];
+                ui.horizontal(|ui| {
+                    ui.label("Offset");
+                    let changed_x = ui.add(egui::DragValue::new(&mut dx).speed(1.0)).changed();
+                    let changed_y = ui.add(egui::DragValue::new(&mut dy).speed(1.0)).changed();
+                    if changed_x || changed_y {
+                        actions.push(("brush.set_clone_offset", json!({ "dx": dx, "dy": dy })));
+                    }
+                });
+            }
+            let mut rgba = color;
             ui.horizontal(|ui| {
-                ui.label("Offset");
-                let changed_x = ui.add(egui::DragValue::new(&mut dx).speed(1.0)).changed();
-                let changed_y = ui.add(egui::DragValue::new(&mut dy).speed(1.0)).changed();
-                if changed_x || changed_y {
-                    let _ = self.dispatch("brush.set_clone_offset", &json!({ "dx": dx, "dy": dy }));
+                ui.label("Color");
+                if ui.color_edit_button_rgba_unmultiplied(&mut rgba).changed() {
+                    actions.push(("brush.set_color", json!({ "color": rgba })));
                 }
             });
-        }
-        let mut rgba = color;
-        ui.horizontal(|ui| {
-            ui.label("Color");
-            if ui.color_edit_button_rgba_unmultiplied(&mut rgba).changed() {
-                let _ = self.dispatch("brush.set_color", &json!({ "color": rgba }));
+            ui.horizontal(|ui| {
+                ui.label("Symmetry");
+                egui::ComboBox::from_id_salt("sc.brush.symmetry").selected_text(symmetry.label()).show_ui(ui, |ui| {
+                    for mode in Symmetry::ALL {
+                        if ui.selectable_label(mode == symmetry, mode.label()).clicked() {
+                            actions.push(("brush.set_symmetry", json!({ "mode": mode.id() })));
+                        }
+                    }
+                });
+            });
+            ui.label(egui::RichText::new("Paint tool: left-drag paints; right-drag pans.").color(Tokens::DARK.text_dim));
+
+            ui.add_space(6.0);
+            ui.separator();
+            ui.strong("Generators");
+            for id in Generator::IDS {
+                let label = Generator::from_id(id).map(|generator| generator.label()).unwrap_or(id);
+                if ui.button(label).clicked() {
+                    actions.push(("layer.add_generator", json!({ "generator": id })));
+                }
             }
-        });
-        ui.horizontal(|ui| {
-            ui.label("Symmetry");
-            egui::ComboBox::from_id_salt("sc.brush.symmetry").selected_text(symmetry.label()).show_ui(ui, |ui| {
-                for mode in Symmetry::ALL {
-                    if ui.selectable_label(mode == symmetry, mode.label()).clicked() {
-                        let _ = self.dispatch("brush.set_symmetry", &json!({ "mode": mode.id() }));
+
+            ui.add_space(6.0);
+            ui.separator();
+            ui.strong("Filters");
+            for id in Filter::IDS {
+                let label = Filter::from_id(id).map(|filter| filter.label()).unwrap_or(id);
+                if ui.button(label).clicked() {
+                    actions.push(("layer.add_filter", json!({ "filter": id })));
+                }
+            }
+
+            ui.add_space(6.0);
+            ui.separator();
+            ui.strong("Bake");
+            ui.horizontal(|ui| {
+                ui.label("Res");
+                for value in [128u32, 256, 512] {
+                    if ui.selectable_label(resolution == value, value.to_string()).clicked() {
+                        actions.push(("bake.set_resolution", json!({ "resolution": value })));
                     }
                 }
             });
+            let mut samples_value = samples;
+            if ui.add(egui::Slider::new(&mut samples_value, 1..=64).text("AO Samples")).changed() {
+                actions.push(("bake.set_samples", json!({ "samples": samples_value })));
+            }
+            ui.horizontal(|ui| {
+                if ui.button("Import High-Poly…").clicked()
+                    && let Some(path) = rfd::FileDialog::new().add_filter("3D meshes", &["obj", "gltf", "glb"]).pick_file()
+                {
+                    actions.push(("file.import_highpoly", json!({ "path": path.to_string_lossy() })));
+                }
+                if ui.add_enabled(high_poly, egui::Button::new("Clear")).clicked() {
+                    actions.push(("bake.clear_highpoly", Value::Null));
+                }
+            });
+            if ui.button("Bake Mesh Maps").clicked() {
+                actions.push(("bake.run", Value::Null));
+            }
+            if let Some(handle) = &bake_preview {
+                ui.add(egui::Image::new(handle).fit_to_exact_size(egui::vec2(96.0, 96.0)));
+            }
+            if has_bake {
+                for map in BakeMap::ALL {
+                    ui.horizontal(|ui| {
+                        ui.label(map.label());
+                        if ui.small_button("Save…").clicked()
+                            && let Some(path) =
+                                rfd::FileDialog::new().add_filter("PNG", &["png"]).set_file_name(format!("{}.png", map.id())).save_file()
+                        {
+                            actions.push(("bake.save", json!({ "map": map.id(), "path": path.to_string_lossy() })));
+                        }
+                    });
+                }
+            }
+            for line in &log {
+                ui.label(egui::RichText::new(line).color(Tokens::DARK.text_dim));
+            }
         });
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new("Paint tool: left-drag paints; right-drag pans.").color(Tokens::DARK.text_dim));
 
-        ui.add_space(6.0);
-        ui.separator();
-        ui.strong("Generators");
-        for id in Generator::IDS {
-            let label = Generator::from_id(id).map(|generator| generator.label()).unwrap_or(id);
-            if ui.button(label).clicked() {
-                let _ = self.dispatch("layer.add_generator", &json!({ "generator": id }));
-            }
-        }
-        ui.add_space(6.0);
-        ui.separator();
-        ui.strong("Filters");
-        for id in Filter::IDS {
-            let label = Filter::from_id(id).map(|filter| filter.label()).unwrap_or(id);
-            if ui.button(label).clicked() {
-                let _ = self.dispatch("layer.add_filter", &json!({ "filter": id }));
-            }
+        for (id, params) in actions {
+            let _ = self.dispatch(id, &params);
         }
     }
 

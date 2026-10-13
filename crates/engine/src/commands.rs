@@ -22,6 +22,7 @@ fn register(registry: &mut CommandRegistry) -> Result<(), crate::command::Comman
     crate::texture_set_cmds::register(registry)?;
     crate::layer_cmds::register(registry)?;
     crate::paint_cmds::register(registry)?;
+    crate::bake_cmds::register(registry)?;
     crate::ui_cmds::register(registry)?;
 
     registry.register(

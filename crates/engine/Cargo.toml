@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 substancecraft-doc.workspace = true
+substancecraft-geom.workspace = true
 substancecraft-raster.workspace = true
 substancecraft-format.workspace = true
 substancecraft-render.workspace = true
