@@ -1,5 +1,6 @@
 //! Workspace automation. Run with `cargo xtask <task>`.
 
+mod assets;
 mod layers;
 mod stats;
 
@@ -14,7 +15,7 @@ fn main() -> ExitCode {
         "stats" => stats::run(),
         "build" => build(args.collect()),
         "ci" => ci(),
-        "assets" => assets(),
+        "assets" => assets::run(),
         "help" | "--help" | "-h" => {
             help();
             ExitCode::SUCCESS
@@ -74,12 +75,6 @@ fn ci() -> ExitCode {
             return ExitCode::FAILURE;
         }
     }
-    ExitCode::SUCCESS
-}
-
-/// Fetch pinned test assets. Implemented with the asset milestone.
-fn assets() -> ExitCode {
-    println!("assets: the pinned test corpus is fetched here once the viewport milestone lands.");
     ExitCode::SUCCESS
 }
 

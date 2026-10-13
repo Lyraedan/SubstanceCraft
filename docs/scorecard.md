@@ -4,7 +4,7 @@ Measured numbers, not estimates. Generated targets (`scorecard/*.toml`, `perf/bu
 `cargo xtask scorecard` task arrive with the performance milestone (M12). Until then this file is
 maintained by hand.
 
-_Last measured: 2026-10-13 (M1 core)._
+_Last measured: 2026-10-13 (M1)._
 
 ## Workspace
 
@@ -12,8 +12,8 @@ _Last measured: 2026-10-13 (M1 core)._
 |---|---|
 | Crates | 18 |
 | Apps | 2 |
-| Registered commands | 13 |
-| Workspace tests | 60+ (see `cargo xtask stats`) |
+| Registered commands | 17 |
+| Rust files / lines | 46 / ~4.9k |
 | `cargo xtask ci` | green |
 
 ## Performance budgets
@@ -27,7 +27,8 @@ None enforced yet. `cargo xtask perf` and `perf/budgets.toml` arrive with M12. B
 
 ## Corpus floors
 
-No corpus yet; `cargo xtask assets` (M1 loose end) fetches CC0 assets into `corpus/`.
+`cargo xtask assets` fetches pinned, SHA-256-verified CC0 assets into `corpus/` (a Poly Haven HDRI and
+the Khronos Avocado glTF). No regression floors are asserted yet.
 
 ## Dead settings
 

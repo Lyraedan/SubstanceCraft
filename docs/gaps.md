@@ -2,17 +2,18 @@
 
 Every known shortfall, ranked. The work list to pick from. New entries go at the top of their tier.
 
-_Last reviewed: 2026-10-13 (M1 core)._
+_Last reviewed: 2026-10-13 (M1 complete)._
 
-## Finishing the viewport (M1 loose ends)
+## Viewport polish (deferred from M1)
 
-1. **No HDRI environment.** Lighting is a hemisphere ambient plus a key light. Need EXR/HDR loading
-   (through `substancecraft-codecs`) and a prefiltered environment for image-based lighting.
-2. **No ground grid/floor.** Scene aids help orientation while painting.
-3. **No wireframe or orthographic view.** Useful for UV and topology checks.
-4. **`cargo xtask assets` is a stub.** Need pinned, sha256-verified CC0 meshes/HDRIs into `corpus/`.
-5. **No live `ui.screenshot`.** The offscreen `snapshot` example exists; the control channel cannot
-   yet capture the running UI.
+1. **Ambient-occlusion / height display modes.** Only base colour, normal, roughness, metalness,
+   UV checker and wireframe are wired.
+2. **Grid object/world alignment and camera persistence.** The grid is world-space; the camera is
+   not yet saved per session (arrives with the project format, M10).
+3. **Specular IBL is a mip approximation.** The environment uses box-filtered mips rather than a
+   prefiltered GGX chain and a BRDF LUT; good enough for preview, worth improving for export fidelity.
+4. **Wireframe is an edge overlay**, not a polygon-mode wireframe (Metal has no line polygon mode).
+5. **Selection outline** is not implemented.
 
 ## Next milestones
 
@@ -26,9 +27,10 @@ _Last reviewed: 2026-10-13 (M1 core)._
 
 ## Infrastructure
 
-12. **No perf harness.** `cargo xtask perf` and budgets arrive with M12. The viewport renders every
-    frame; it should render on revision change.
-13. **No corpus.** Real-file oracles arrive with the baking/export milestones.
+12. **No perf harness.** `cargo xtask perf` and budgets arrive with M12. The viewport re-renders every
+    frame (polled at ~5 Hz when idle); it should render on revision change only.
+13. **No corpus tests.** `cargo xtask assets` fetches pinned CC0 assets; no oracle/round-trip corpus
+    tests consume them yet (they come with baking/export).
 
 ## Automation
 

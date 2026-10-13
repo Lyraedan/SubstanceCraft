@@ -11,6 +11,7 @@ pub mod command;
 pub mod commands;
 pub mod scene_cmds;
 pub mod session;
+pub mod ui_cmds;
 pub mod viewport_cmds;
 
 pub use command::{CommandError, CommandOutcome, CommandRegistry, CommandResult, CommandSpec};

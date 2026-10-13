@@ -11,3 +11,4 @@ description = "Workspace tasks: layering, CI, build packaging and stats."
 
 [dependencies]
 serde_json.workspace = true
+sha2.workspace = true

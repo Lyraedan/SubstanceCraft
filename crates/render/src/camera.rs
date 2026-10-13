@@ -3,6 +3,35 @@
 use glam::{Mat4, Vec3};
 use substancecraft_geom::Bounds;
 
+/// The camera projection.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Projection {
+    /// Perspective projection (the default).
+    #[default]
+    Perspective,
+    /// Orthographic projection, sized to match the perspective framing.
+    Orthographic,
+}
+
+impl Projection {
+    /// A stable id for commands and menus.
+    pub fn id(self) -> &'static str {
+        match self {
+            Projection::Perspective => "perspective",
+            Projection::Orthographic => "orthographic",
+        }
+    }
+
+    /// Parse a projection from its id.
+    pub fn from_id(id: &str) -> Option<Self> {
+        Some(match id {
+            "perspective" => Projection::Perspective,
+            "orthographic" => Projection::Orthographic,
+            _ => return None,
+        })
+    }
+}
+
 /// A turntable camera that orbits a target, pans, and dollies along the view direction.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OrbitCamera {
@@ -20,6 +49,8 @@ pub struct OrbitCamera {
     pub znear: f32,
     /// Far plane.
     pub zfar: f32,
+    /// The projection mode.
+    pub projection: Projection,
 }
 
 /// The pitch clamp, just short of the poles so `look_at` stays well-defined.
@@ -27,7 +58,16 @@ const MAX_PITCH: f32 = 1.553_343; // ~89 degrees
 
 impl Default for OrbitCamera {
     fn default() -> Self {
-        Self { target: Vec3::ZERO, distance: 4.0, yaw: 0.7, pitch: 0.45, fov_y: 45.0f32.to_radians(), znear: 0.01, zfar: 1000.0 }
+        Self {
+            target: Vec3::ZERO,
+            distance: 4.0,
+            yaw: 0.7,
+            pitch: 0.45,
+            fov_y: 45.0f32.to_radians(),
+            znear: 0.01,
+            zfar: 1000.0,
+            projection: Projection::Perspective,
+        }
     }
 }
 
@@ -47,7 +87,15 @@ impl OrbitCamera {
 
     /// The projection matrix for a given aspect ratio (wgpu NDC: Z in `0..=1`, Y up).
     pub fn projection(&self, aspect: f32) -> Mat4 {
-        glam::camera::rh::proj::directx::perspective(self.fov_y, aspect.max(1e-3), self.znear, self.zfar)
+        let aspect = aspect.max(1e-3);
+        match self.projection {
+            Projection::Perspective => glam::camera::rh::proj::directx::perspective(self.fov_y, aspect, self.znear, self.zfar),
+            Projection::Orthographic => {
+                let half_height = self.distance * (self.fov_y * 0.5).tan();
+                let half_width = half_height * aspect;
+                glam::camera::rh::proj::directx::orthographic(-half_width, half_width, -half_height, half_height, self.znear, self.zfar)
+            }
+        }
     }
 
     /// The combined view-projection matrix.
@@ -129,5 +177,20 @@ mod tests {
         let camera = OrbitCamera::default();
         let vp = camera.view_projection(16.0 / 9.0);
         assert!(vp.to_cols_array().iter().all(|value| value.is_finite()));
+    }
+
+    #[test]
+    fn projection_modes_round_trip_and_differ() {
+        for mode in [Projection::Perspective, Projection::Orthographic] {
+            assert_eq!(Projection::from_id(mode.id()), Some(mode));
+        }
+        assert_eq!(Projection::from_id("nope"), None);
+
+        let mut camera = OrbitCamera::default();
+        let perspective = camera.projection(16.0 / 9.0);
+        camera.projection = Projection::Orthographic;
+        let orthographic = camera.projection(16.0 / 9.0);
+        assert_ne!(perspective, orthographic);
+        assert!(orthographic.to_cols_array().iter().all(|value| value.is_finite()));
     }
 }

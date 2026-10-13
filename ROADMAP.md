@@ -6,19 +6,21 @@ texture painter. This is the one-page summary; details live in `docs/roadmap.md`
 ## Status
 
 **M0 — Bootstrap: complete.** Workspace, 18 layered crates, craft-libs integration, app shell,
-command registry and JSON control channel; `cargo xtask ci` green.
+command registry and JSON control channel.
 
-**M1 — 3D viewport + PBR preview: core complete.** glTF/OBJ import with tangents, orbit camera,
-metal/rough PBR with hemisphere + key IBL, tone mapping and exposure, display modes, a wgpu
-viewport hosted in egui, and offscreen snapshot. Loose ends: HDRI/EXR environment, grid/floor,
-wireframe/orthographic, `cargo xtask assets`, live `ui.screenshot`.
+**M1 — 3D viewport + PBR preview: complete.** glTF/OBJ import with tangents; orbit/pan/dolly/focus
+camera with perspective and orthographic projection; metal/rough PBR with HDRI image-based lighting
+(`.hdr`/`.exr`) and a hemisphere fallback; tone mapping and exposure; display modes (base colour,
+normal, roughness, metalness, UV checker, wireframe); ground grid and sky/environment background; a
+wgpu viewport hosted in egui; offscreen snapshot plus live `ui.screenshot`; pinned CC0 assets via
+`cargo xtask assets`.
 
 ## Milestones
 
 | # | Milestone | Focus |
 |---|---|---|
 | **M0** | Bootstrap | workspace, crates, layering, app shell, commands, control channel ✅ |
-| **M1** | Viewport + PBR preview | glTF/OBJ import, camera, metal/rough PBR, IBL, tone mapping, display modes ◐ |
+| **M1** | Viewport + PBR preview | import, camera, PBR, IBL, tone mapping, display modes, grid ✅ |
 | M2 | Texture sets & UV tiles | split by material id, per-set shaders/channels, UDIM |
 | M3 | Layer stack | doc model, fill/mask/group/blend, CPU oracle + GPU compositor, undo |
 | M4 | Painting | brush engine, tablet pressure, projection painting |

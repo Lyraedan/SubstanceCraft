@@ -16,6 +16,8 @@ pub enum DisplayMode {
     Metalness,
     /// A UV checker to inspect the unwrap.
     UvChecker,
+    /// Triangle edges only.
+    Wireframe,
 }
 
 impl DisplayMode {
@@ -27,6 +29,7 @@ impl DisplayMode {
             DisplayMode::Roughness => 2.0,
             DisplayMode::Metalness => 3.0,
             DisplayMode::UvChecker => 4.0,
+            DisplayMode::Wireframe => 5.0,
         }
     }
 
@@ -38,6 +41,7 @@ impl DisplayMode {
             DisplayMode::Roughness => "roughness",
             DisplayMode::Metalness => "metalness",
             DisplayMode::UvChecker => "uv_checker",
+            DisplayMode::Wireframe => "wireframe",
         }
     }
 
@@ -49,6 +53,7 @@ impl DisplayMode {
             "roughness" => DisplayMode::Roughness,
             "metalness" => DisplayMode::Metalness,
             "uv_checker" => DisplayMode::UvChecker,
+            "wireframe" => DisplayMode::Wireframe,
             _ => return None,
         })
     }
@@ -73,6 +78,10 @@ pub struct RenderSettings {
     pub ambient_sky: [f32; 3],
     /// The ground hemisphere ambient colour.
     pub ambient_ground: [f32; 3],
+    /// Whether to draw the ground grid.
+    pub show_grid: bool,
+    /// Whether to draw the procedural sky background (otherwise a flat clear colour).
+    pub show_background: bool,
 }
 
 impl Default for RenderSettings {
@@ -86,6 +95,8 @@ impl Default for RenderSettings {
             light_color: [3.0, 2.9, 2.7],
             ambient_sky: [0.35, 0.45, 0.6],
             ambient_ground: [0.08, 0.07, 0.06],
+            show_grid: true,
+            show_background: true,
         }
     }
 }
@@ -109,7 +120,14 @@ mod tests {
 
     #[test]
     fn display_mode_ids_round_trip() {
-        for mode in [DisplayMode::BaseColor, DisplayMode::Normal, DisplayMode::Roughness, DisplayMode::Metalness, DisplayMode::UvChecker] {
+        for mode in [
+            DisplayMode::BaseColor,
+            DisplayMode::Normal,
+            DisplayMode::Roughness,
+            DisplayMode::Metalness,
+            DisplayMode::UvChecker,
+            DisplayMode::Wireframe,
+        ] {
             assert_eq!(DisplayMode::from_id(mode.id()), Some(mode));
         }
     }

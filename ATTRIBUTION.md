@@ -11,8 +11,13 @@ Assets must be permissively licensed and keep their license file next to them.
 
 ## Test assets
 
-Pinned, permissively licensed models, HDRIs and textures are fetched into `corpus/` (gitignored) by
-`cargo xtask assets` — implemented with the viewport milestone. None are committed.
+Pinned, permissively licensed models and HDRIs are fetched into `corpus/` (gitignored) by
+`cargo xtask assets`, which verifies each file's SHA-256. None are committed.
+
+| Asset | Path (in `corpus/`) | Author | Source | License | SHA-256 |
+|---|---|---|---|---|---|
+| studio_small_09 HDRI (1k) | `hdri/studio_small_09_1k.hdr` | Poly Haven | https://polyhaven.com/a/studio_small_09 | CC0 1.0 | `e7cfda5f4e98e623db12b8bfd0184e048488e4855d9c83e2751fb44a32e80c45` |
+| Avocado (glTF) | `models/Avocado.glb` | Microsoft (Khronos glTF Sample Assets) | https://github.com/KhronosGroup/glTF-Sample-Assets | CC0 1.0 | `ccc9c3ce56423720b09399c2351537207cd5a65f859f9e6e2f30922762f3abd4` |
 
 ## Icons and brand
 

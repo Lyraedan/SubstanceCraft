@@ -2,6 +2,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use substancecraft_codecs::ImageF32;
 use substancecraft_doc::Scene;
 use substancecraft_render::{OrbitCamera, RenderSettings};
 
@@ -31,10 +32,18 @@ pub struct Session {
     status: Option<String>,
     /// The imported scene the viewport draws.
     scene: Scene,
+    /// Bumped only when the scene changes, so the renderer re-uploads geometry.
+    scene_revision: u64,
+    /// The linear HDR environment for image-based lighting, if any.
+    environment: Option<Arc<ImageF32>>,
+    /// Bumped when the environment changes, so the renderer re-uploads it.
+    environment_revision: u64,
     /// The viewport camera.
     camera: OrbitCamera,
     /// The viewport render settings (display mode, exposure, tone mapping).
     settings: RenderSettings,
+    /// A pending request to save a window screenshot to this path (handled by the shell).
+    screenshot_request: Option<String>,
 }
 
 impl Default for Session {
@@ -51,8 +60,12 @@ impl Session {
             revision: 0,
             status: None,
             scene: Scene::default(),
+            scene_revision: 1,
+            environment: None,
+            environment_revision: 1,
             camera: OrbitCamera::default(),
             settings: RenderSettings::default(),
+            screenshot_request: None,
         }
     }
 
@@ -94,6 +107,29 @@ impl Session {
     /// Replace the scene and bump the revision.
     pub fn set_scene(&mut self, scene: Scene) {
         self.scene = scene;
+        self.scene_revision = self.scene_revision.saturating_add(1);
+        self.touch();
+    }
+
+    /// Bumped when the scene changes, so the renderer re-uploads geometry.
+    pub fn scene_revision(&self) -> u64 {
+        self.scene_revision
+    }
+
+    /// The current environment map, if any.
+    pub fn environment(&self) -> Option<&Arc<ImageF32>> {
+        self.environment.as_ref()
+    }
+
+    /// Bumped when the environment changes, so the renderer re-uploads it.
+    pub fn environment_revision(&self) -> u64 {
+        self.environment_revision
+    }
+
+    /// Replace (or clear) the environment map.
+    pub fn set_environment(&mut self, environment: Option<ImageF32>) {
+        self.environment = environment.map(Arc::new);
+        self.environment_revision = self.environment_revision.saturating_add(1);
         self.touch();
     }
 
@@ -115,6 +151,16 @@ impl Session {
     /// The viewport render settings, mutably. Callers should `touch` after changing them.
     pub fn settings_mut(&mut self) -> &mut RenderSettings {
         &mut self.settings
+    }
+
+    /// Queue a screenshot request; the shell captures the next frame to `path`.
+    pub fn request_screenshot(&mut self, path: impl Into<String>) {
+        self.screenshot_request = Some(path.into());
+    }
+
+    /// Take the pending screenshot request, if any.
+    pub fn take_screenshot_request(&mut self) -> Option<String> {
+        self.screenshot_request.take()
     }
 }
 

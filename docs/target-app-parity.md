@@ -4,7 +4,7 @@ Where SubstanceCraft stands against Adobe Substance 3D Painter, dimension by dim
 lines carry the date; update the dimension when your work moves it. SubstanceCraft is a clean-room
 reimplementation: parity means comparable behaviour and results, never copied code or assets.
 
-_Last reviewed: 2026-10-13 (M1 core)._
+_Last reviewed: 2026-10-13 (M1 complete)._
 
 | Dimension | Weight | Status | Notes |
 |---|---|---|---|
@@ -14,29 +14,30 @@ _Last reviewed: 2026-10-13 (M1 core)._
 | Procedural content (generators/filters/smart materials) | high | 0% | Not started; M6. |
 | Baking (mesh maps + cage) | high | 0% | Not started; M7. |
 | Export (presets, channels, UDIM, OpenPBR) | high | 0% | Not started; M8. |
-| Viewport & PBR preview | medium | 45% | Import, camera, metal/rough PBR, tone mapping, display modes, offscreen snapshot (M1 core). |
+| Viewport & PBR preview | medium | 85% | Import, camera (persp/ortho), metal/rough PBR, HDRI IBL, tone mapping, display modes, grid, wireframe, snapshot. |
 | Shaders (OpenPBR / ASM) | medium | 0% | M9. |
-| Automation & scripting | medium | 20% | 13 commands; JSON control channel drives the live viewport (M0–M1). |
+| Automation & scripting | medium | 25% | 17 commands; control channel drives the live viewport and captures screenshots. |
 | Native project format | medium | 0% | M10. |
 | Performance | medium | n/a | No measurements yet. |
 
-## Viewport / PBR preview (M1)
+## Viewport / PBR preview (M1) — complete
 
 - [x] App window, theme, command registry, control channel (M0).
 - [x] Mesh import (glTF, OBJ) with tangents.
-- [x] Orbit/pan/dolly/focus camera.
+- [x] Orbit/pan/dolly/focus camera; perspective and orthographic.
 - [x] Metal/rough PBR shading.
-- [ ] Image-based lighting from an HDRI (hemisphere ambient + key light today).
+- [x] Image-based lighting from an HDRI (`.hdr`/`.exr`) with a hemisphere fallback.
 - [x] Tone mapping and exposure.
-- [x] Display modes (base colour, normal, roughness, metalness, UV checker).
-- [x] Offscreen snapshot + smoke test.
+- [x] Display modes (base colour, normal, roughness, metalness, UV checker, wireframe).
+- [x] Ground grid and sky/environment background.
+- [x] Offscreen snapshot + smoke test; pinned CC0 assets (`cargo xtask assets`).
 
 ## Automation
 
-- [x] Command registry with id/label/menu/params/enabled/run and tests (M0).
-- [x] JSON control channel: ping, list commands, dispatch, error as data (M0).
-- [x] Drives the live session (scene import, display mode, framing) (M1).
-- [ ] `ui.screenshot` (offscreen capture from the UI).
+- [x] Command registry with id/label/menu/params/enabled/run and tests.
+- [x] JSON control channel: ping, list commands, dispatch, error as data.
+- [x] Drives the live session (scene import, display mode, environment, framing).
+- [x] `ui.screenshot` (live window capture to PNG).
 - [ ] MCP server.
 
 See the per-dimension checklists: `viewport-parity.md`, `layerstack-parity.md`, `brush-parity.md`,

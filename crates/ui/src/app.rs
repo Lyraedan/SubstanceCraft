@@ -3,6 +3,7 @@
 //! Thin by rule: it renders state and dispatches commands by id. It does not implement
 //! document behaviour. Window close is routed through `craft-quit` so macOS exits cleanly.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use craft_settings::{Location, Settings, SettingsStore};
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use substancecraft_engine::command::{CommandError, CommandOutcome, CommandRegistry};
 use substancecraft_engine::session::{SharedSession, lock};
+use substancecraft_render::Projection;
 
 use crate::state::UiState;
 use crate::theme::Tokens;
@@ -30,7 +32,7 @@ impl Settings for Prefs {
 
 /// The display-mode buttons in the toolbar, as `(display id, label)`.
 const DISPLAY_MODES: &[(&str, &str)] =
-    &[("base_color", "Base"), ("normal", "Normal"), ("roughness", "Rough"), ("metalness", "Metal"), ("uv_checker", "UV")];
+    &[("base_color", "Base"), ("normal", "Normal"), ("roughness", "Rough"), ("metalness", "Metal"), ("uv_checker", "UV"), ("wireframe", "Wire")];
 
 /// The main application.
 pub struct StudioApp {
@@ -39,6 +41,7 @@ pub struct StudioApp {
     prefs: SettingsStore<Prefs>,
     status: String,
     viewport: Viewport,
+    pending_screenshot: Option<PathBuf>,
 }
 
 impl StudioApp {
@@ -53,8 +56,14 @@ impl StudioApp {
         let (prefs, _report) = SettingsStore::<Prefs>::open(Location::Auto);
 
         // Show something in the viewport immediately, through the command path.
-        let mut app =
-            Self { registry, session, prefs, status: format!("SubstanceCraft {}", env!("CARGO_PKG_VERSION")), viewport: Viewport::default() };
+        let mut app = Self {
+            registry,
+            session,
+            prefs,
+            status: format!("SubstanceCraft {}", env!("CARGO_PKG_VERSION")),
+            viewport: Viewport::default(),
+            pending_screenshot: None,
+        };
         app.report(app.dispatch("scene.load_default", &Value::Null));
         app
     }
@@ -107,8 +116,42 @@ impl StudioApp {
             }
 
             ui.separator();
+            let projection = lock(&self.session).camera().projection;
+            if ui.selectable_label(projection == Projection::Perspective, "Persp").clicked() {
+                self.report(self.dispatch("viewport.set_projection", &json!({ "mode": "perspective" })));
+            }
+            if ui.selectable_label(projection == Projection::Orthographic, "Ortho").clicked() {
+                self.report(self.dispatch("viewport.set_projection", &json!({ "mode": "orthographic" })));
+            }
+
+            ui.separator();
+            let (grid, background) = {
+                let session = lock(&self.session);
+                (session.settings().show_grid, session.settings().show_background)
+            };
+            if ui.selectable_label(grid, "Grid").clicked() {
+                self.report(self.dispatch("viewport.set_grid", &json!({ "enabled": !grid })));
+            }
+            if ui.selectable_label(background, "Sky").clicked() {
+                self.report(self.dispatch("viewport.set_background", &json!({ "enabled": !background })));
+            }
+            if ui.button("Env…").clicked()
+                && let Some(path) = rfd::FileDialog::new().add_filter("HDR environments", &["hdr", "exr"]).pick_file()
+            {
+                self.report(self.dispatch("viewport.set_environment", &json!({ "path": path.to_string_lossy() })));
+            }
+            if ui.button("Demo Env").clicked() {
+                self.report(self.dispatch("viewport.use_demo_environment", &Value::Null));
+            }
+
+            ui.separator();
             if ui.button("About").clicked() {
                 self.report(self.dispatch("app.version", &Value::Null));
+            }
+            if ui.button("Shot…").clicked()
+                && let Some(path) = rfd::FileDialog::new().add_filter("PNG", &["png"]).set_file_name("screenshot.png").save_file()
+            {
+                self.report(self.dispatch("ui.screenshot", &json!({ "path": path.to_string_lossy() })));
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -164,6 +207,38 @@ impl StudioApp {
             ui.label(egui::RichText::new(&self.status).color(Tokens::DARK.text_dim));
         });
     }
+
+    /// Fulfil a queued screenshot: request one from eframe, then save the returned image.
+    fn handle_screenshots(&mut self, ctx: &egui::Context) {
+        if let Some(path) = lock(&self.session).take_screenshot_request() {
+            self.pending_screenshot = Some(PathBuf::from(path));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+        }
+
+        let captured = ctx.input(|input| {
+            input.events.iter().find_map(|event| match event {
+                egui::Event::Screenshot { image, .. } => Some(image.clone()),
+                _ => None,
+            })
+        });
+        if let Some(image) = captured
+            && let Some(path) = self.pending_screenshot.take()
+        {
+            self.report(save_screenshot(&path, &image));
+        }
+    }
+}
+
+/// Write an egui screenshot to a PNG.
+fn save_screenshot(path: &Path, image: &egui::ColorImage) -> Result<CommandOutcome, CommandError> {
+    let [width, height] = image.size;
+    let mut bytes = Vec::with_capacity(width.saturating_mul(height).saturating_mul(4));
+    for pixel in &image.pixels {
+        bytes.extend_from_slice(&[pixel.r(), pixel.g(), pixel.b(), pixel.a()]);
+    }
+    image::save_buffer(path, &bytes, width as u32, height as u32, image::ExtendedColorType::Rgba8)
+        .map_err(|err| CommandError::Failed(format!("could not save screenshot: {err}")))?;
+    Ok(CommandOutcome::message(format!("screenshot saved: {}", path.display())))
 }
 
 impl eframe::App for StudioApp {
@@ -174,7 +249,10 @@ impl eframe::App for StudioApp {
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let _ = self.prefs.tick(std::time::Instant::now());
+        self.handle_screenshots(ctx);
         craft_quit::on_close_request(ctx);
+        // Poll session state so control-channel-driven changes appear without user input.
+        ctx.request_repaint_after(std::time::Duration::from_millis(200));
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {

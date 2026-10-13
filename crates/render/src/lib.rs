@@ -12,8 +12,8 @@ pub mod headless;
 pub mod renderer;
 pub mod settings;
 
-pub use camera::OrbitCamera;
-pub use headless::{Headless, render_rgba, render_rgba_with};
+pub use camera::{OrbitCamera, Projection};
+pub use headless::{Headless, render_rgba, render_rgba_env, render_rgba_with, synthetic_environment};
 pub use renderer::{RenderError, ViewportRenderer};
 pub use settings::{DisplayMode, RenderSettings};
 

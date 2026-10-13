@@ -4,28 +4,32 @@ Milestones and the current focus. The one-page summary is `ROADMAP.md`.
 
 ## Current focus
 
-**Finishing M1, then M2.**
+**M2 — Texture sets & UV tiles.**
 
-M1 is core-complete: glTF/OBJ import with tangents, orbit camera, metal/rough PBR with a hemisphere
-+ key light, tone mapping (linear/sRGB/ACES/AgX/neutral), exposure, display modes (base colour,
-normal, roughness, metalness, UV checker), a wgpu viewport hosted in egui, and an offscreen snapshot.
-Loose ends: HDRI/EXR environment with prefiltered IBL, ground grid/floor, wireframe and orthographic
-view, `cargo xtask assets`, and live `ui.screenshot`.
+M1 is complete (import, camera, PBR + HDRI IBL, tone mapping, display modes, grid, wireframe,
+offscreen and live screenshots, pinned assets). Next:
 
-See `docs/viewport-parity.md` for the checklist and `docs/gaps.md` for the ranked work list.
+1. Split the imported mesh into **texture sets** by material id (and, for UDIM projects, group or
+   separate UV tiles).
+2. A texture-set list UI that switches the active set and drives per-set channel configuration.
+3. Per-set channel selection (base colour, roughness, metalness, normal, height, AO…) using the
+   OpenPBR channel set, and per-set shader assignment.
+4. UDIM / UV-tile handling so painting can later span tiles seamlessly.
 
-## M1 deliverables (reference)
+See `docs/gaps.md` for the ranked work list.
+
+## M1 deliverables (reference) — done
 
 1. `substancecraft-geom`: mesh types, OBJ + glTF import, tangents, bounds and focus math. ✅
-2. `substancecraft-render` + `substancecraft-gpu`: metal/rough PBR, IBL, tone mapping, exposure. ◐
+2. `substancecraft-render` + `substancecraft-gpu`: metal/rough PBR, HDRI IBL, tone mapping, exposure. ✅
 3. `substancecraft-color`: colour pipeline and tone-mapping tests. ✅
-4. Camera: orbit / pan / dolly / focus. ✅ Grid and floor pending.
-5. Display modes: base colour, normal, roughness, metalness, UV checker. ✅ AO/height, wireframe pending.
-6. Commands: `file.import_mesh`, `scene.*`, `viewport.*`. ✅
+4. Camera: orbit / pan / dolly / focus; perspective and orthographic; grid. ✅
+5. Display modes: base colour, normal, roughness, metalness, UV checker, wireframe. ✅
+6. Commands: `file.import_mesh`, `scene.*`, `viewport.*`, `ui.screenshot`. ✅
 7. UI: viewport panel hosting the render target; toolbar. ✅
-8. Control channel: `file.import_mesh` and friends; `--control`. ✅ `ui.screenshot` pending.
+8. Control channel drives the live viewport; `--control`. ✅
 9. Offscreen snapshot example plus a smoke test. ✅
-10. `cargo xtask assets`. Pending.
+10. `cargo xtask assets`: pinned, SHA-256-verified CC0 assets. ✅
 
 Acceptance: `cargo run -p substancecraft` opens the window, imports a sample glTF/OBJ, orbits with a
 real camera, PBR-shades it with IBL and tone mapping, switches display modes — all via commands; the

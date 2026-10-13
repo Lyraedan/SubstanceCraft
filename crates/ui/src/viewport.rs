@@ -10,6 +10,8 @@ pub struct Viewport {
     renderer: Option<ViewportRenderer>,
     texture_id: Option<egui::TextureId>,
     uploaded_size: (u32, u32),
+    uploaded_scene_revision: u64,
+    uploaded_environment_revision: u64,
 }
 
 impl Viewport {
@@ -32,6 +34,8 @@ impl Viewport {
         if self.renderer.is_none() {
             self.renderer = Some(ViewportRenderer::new(&render_state.device));
         }
+
+        self.upload_if_changed(&render_state.device, &render_state.queue, session);
 
         let resized = self.renderer.as_ref().is_none_or(|renderer| renderer.size() != (width, height));
         if resized && let Some(renderer) = self.renderer.as_mut() {
@@ -61,6 +65,31 @@ impl Viewport {
             egui::FontId::monospace(11.0),
             crate::theme::Tokens::DARK.text_dim,
         );
+    }
+
+    /// Re-upload geometry and the environment when their session revisions change.
+    fn upload_if_changed(&mut self, device: &eframe::wgpu::Device, queue: &eframe::wgpu::Queue, session: &SharedSession) {
+        let guard = lock(session);
+        let scene_revision = guard.scene_revision();
+        let environment_revision = guard.environment_revision();
+        let scene_dirty = scene_revision != self.uploaded_scene_revision;
+        let environment_dirty = environment_revision != self.uploaded_environment_revision;
+        if !scene_dirty && !environment_dirty {
+            return;
+        }
+
+        let Some(renderer) = self.renderer.as_mut() else { return };
+        if scene_dirty {
+            renderer.set_scene(device, queue, guard.scene());
+            self.uploaded_scene_revision = scene_revision;
+        }
+        if environment_dirty {
+            match guard.environment() {
+                Some(image) => renderer.set_environment(device, queue, image),
+                None => renderer.clear_environment(device),
+            }
+            self.uploaded_environment_revision = environment_revision;
+        }
     }
 
     fn handle_camera(&mut self, ui: &egui::Ui, response: &egui::Response, rect: egui::Rect, session: &SharedSession) {

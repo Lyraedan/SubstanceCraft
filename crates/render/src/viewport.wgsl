@@ -6,6 +6,7 @@
 
 struct Camera {
     view_proj: mat4x4<f32>,
+    inv_view_proj: mat4x4<f32>,
     camera_pos: vec4<f32>,
     light_dir: vec4<f32>,
     light_color: vec4<f32>,
@@ -13,6 +14,8 @@ struct Camera {
     ambient_ground: vec4<f32>,
     // x = exposure stops, y = display mode, z = tone map
     params: vec4<f32>,
+    // x = has environment, y = max mip level
+    env_params: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -24,6 +27,9 @@ struct Material {
 };
 
 @group(1) @binding(0) var<uniform> material: Material;
+
+@group(2) @binding(0) var env_texture: texture_2d<f32>;
+@group(2) @binding(1) var env_sampler: sampler;
 
 const PI: f32 = 3.14159265359;
 
@@ -70,6 +76,17 @@ fn geometry_smith(n_dot_v: f32, n_dot_l: f32, roughness: f32) -> f32 {
 
 fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
     return f0 + (vec3<f32>(1.0) - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+fn fresnel_schlick_roughness(cos_theta: f32, f0: vec3<f32>, roughness: f32) -> vec3<f32> {
+    return f0 + (max(vec3<f32>(1.0 - roughness), f0) - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+fn sample_environment(direction: vec3<f32>, lod: f32) -> vec3<f32> {
+    let d = normalize(direction);
+    let u = atan2(d.z, d.x) * (0.5 / PI) + 0.5;
+    let v = acos(clamp(d.y, -1.0, 1.0)) / PI;
+    return textureSampleLevel(env_texture, env_sampler, vec2<f32>(u, v), lod).rgb;
 }
 
 fn tonemap_reinhard(x: vec3<f32>) -> vec3<f32> {
@@ -145,7 +162,14 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let direct = (kd * base_color.rgb / PI + specular) * camera.light_color.rgb * n_dot_l;
 
     let hemisphere = mix(camera.ambient_ground.rgb, camera.ambient_sky.rgb, n.y * 0.5 + 0.5);
-    let ambient = hemisphere * base_color.rgb * (1.0 - metallic * 0.5);
+    var ambient = hemisphere * base_color.rgb * (1.0 - metallic * 0.5);
+    if (camera.env_params.x > 0.5) {
+        let f_ibl = fresnel_schlick_roughness(n_dot_v, f0, roughness);
+        let kd_ibl = (vec3<f32>(1.0) - f_ibl) * (1.0 - metallic);
+        let irradiance = sample_environment(n, camera.env_params.y);
+        let reflection = sample_environment(reflect(-v, n), roughness * camera.env_params.y);
+        ambient = kd_ibl * base_color.rgb * irradiance + reflection * f_ibl;
+    }
     let color = direct + ambient;
 
     let exposed = color * exp2(camera.params.x);

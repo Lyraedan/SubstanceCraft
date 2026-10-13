@@ -16,6 +16,7 @@ substancecraft-doc.workspace = true
 substancecraft-format.workspace = true
 substancecraft-render.workspace = true
 substancecraft-io.workspace = true
+substancecraft-codecs.workspace = true
 substancecraft-paint.workspace = true
 substancecraft-bake.workspace = true
 substancecraft-material.workspace = true
