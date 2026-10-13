@@ -35,6 +35,12 @@ Status legend: ✅ done · ◐ in progress · ☐ not started.
 
 Progress: all five phases done. See [`UI_devlog.md`](UI_devlog.md).
 
+### Phase 6 — Dockable panel groups ✅
+- [x] Adopt `craft_ui::docking`: the workspace is a `DockArea`; panels are tabbed, draggable,
+      splittable, floatable, resizable and closable (the viewport is protected/tab-less).
+- [x] Default arrangement mirrors Painter (`dock::default_layout`); layout + closed locations persisted.
+- [x] Two-way sync with the workspace commands, so the control channel opens/closes dock panels.
+
 ## Phases
 
 ### Phase 1 — Shell skeleton ✅

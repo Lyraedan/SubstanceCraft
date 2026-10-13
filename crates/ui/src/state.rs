@@ -4,10 +4,13 @@
 //! layout. The runtime source of truth for panel visibility and the dock selection is the
 //! session's `Workspace` (so the control channel can drive it); this type is the on-disk form.
 
+use craft_ui::docking::{Layout, Location};
 use serde::{Deserialize, Serialize};
 use substancecraft_engine::workspace::Workspace;
 
 pub use substancecraft_engine::workspace::RightTab;
+
+use crate::dock::{DockPanel, default_layout};
 
 /// Which theme to apply.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +62,10 @@ pub struct UiState {
     pub show_tool_rail: bool,
     /// Which tab the right-middle dock shows.
     pub right_tab: RightTab,
+    /// The dockable panel arrangement.
+    pub dock: Layout<DockPanel>,
+    /// Locations of closed panels, so they can be restored where they were.
+    pub dock_closed: Vec<(DockPanel, Location<DockPanel>)>,
 }
 
 impl Default for UiState {
@@ -71,6 +78,8 @@ impl Default for UiState {
             show_tool_properties: true,
             show_tool_rail: true,
             right_tab: RightTab::Layers,
+            dock: default_layout(),
+            dock_closed: Vec::new(),
         }
     }
 }

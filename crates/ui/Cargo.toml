@@ -21,7 +21,7 @@ substancecraft-material.workspace = true
 substancecraft-bake.workspace = true
 substancecraft-render.workspace = true
 substancecraft-engine.workspace = true
-craft-ui.workspace = true
+craft-ui = { workspace = true, features = ["serde"] }
 craft-quit = { workspace = true, features = ["egui", "menu"] }
 craft-settings.workspace = true
 egui.workspace = true

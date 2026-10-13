@@ -14,7 +14,6 @@ use substancecraft_paint::ToolKind;
 
 use crate::app::StudioApp;
 use crate::icons;
-use crate::state::RightTab;
 use crate::theme::Tokens;
 
 /// The assets shelf's library selector.
@@ -163,12 +162,8 @@ struct SetRow {
 }
 
 impl StudioApp {
-    /// The right dock's top panel: the texture set tree.
+    /// The texture set tree.
     pub(crate) fn texture_set_list_panel(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(2.0);
-        ui.strong("Texture Set List");
-        ui.separator();
-
         let (sets, active, isolate) = {
             let session = lock(&self.session);
             let project = session.project();
@@ -333,27 +328,6 @@ impl StudioApp {
         }
     }
 
-    /// The right dock's middle section: a tab strip over Layers and Texture Set Settings.
-    pub(crate) fn right_section(&mut self, ui: &mut egui::Ui) {
-        let current = lock(&self.session).workspace().right_tab;
-        let mut chosen = current;
-        ui.horizontal(|ui| {
-            for tab in RightTab::ALL {
-                if ui.selectable_label(current == tab, tab.label()).clicked() {
-                    chosen = tab;
-                }
-            }
-        });
-        if chosen != current {
-            self.dispatch_and_report("ui.set_right_tab", &json!({ "tab": chosen.id() }));
-        }
-        ui.separator();
-        match chosen {
-            RightTab::Layers => self.layer_stack_panel(ui),
-            RightTab::Settings => self.texture_set_settings_panel(ui),
-        }
-    }
-
     /// The layer stack list and the selected layer's controls.
     pub(crate) fn layer_stack_panel(&mut self, ui: &mut egui::Ui) {
         let (views, can_undo, can_redo) = {
@@ -480,15 +454,8 @@ impl StudioApp {
         }
     }
 
-    /// The right dock's bottom section: Properties — Paint (material + mask previews, brush).
+    /// Properties — Paint (material + mask previews, brush).
     pub(crate) fn properties_panel(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.strong("Properties");
-            ui.separator();
-            ui.label(egui::RichText::new("Paint").color(Tokens::DARK.text_dim));
-        });
-        ui.separator();
-
         let (revision, set, material, mask) = {
             let session = lock(&self.session);
             let project = session.project();
@@ -564,8 +531,6 @@ impl StudioApp {
     /// materials, brushes, generators and filters, with bake and post settings below.
     pub(crate) fn assets_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.strong("Assets");
-            ui.separator();
             let library = ASSET_LIBRARIES.get(self.asset_library).copied().unwrap_or("All Libraries");
             egui::ComboBox::from_id_salt("sc.assets.library").selected_text(library).show_ui(ui, |ui| {
                 for (index, name) in ASSET_LIBRARIES.iter().enumerate() {

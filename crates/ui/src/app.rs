@@ -11,12 +11,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use craft_settings::{Location, Settings, SettingsStore};
+use craft_ui::docking::{Action, DockArea, DockStyle, Layout, Location as DockLocation};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use substancecraft_engine::command::{CommandError, CommandOutcome, CommandRegistry};
 use substancecraft_engine::session::{SharedSession, lock};
-use substancecraft_engine::workspace::Workspace;
+use substancecraft_engine::workspace::{Panel as WorkspacePanel, Workspace};
 
+use crate::dock::DockPanel;
 use crate::state::{ThemeChoice, UiState};
 use crate::theme::Tokens;
 use crate::viewport::{Viewport, ViewportAction, ViewportTool};
@@ -56,6 +58,8 @@ pub struct StudioApp {
     window_title: String,
     last_autosave: Instant,
     last_workspace: Workspace,
+    dock: Layout<DockPanel>,
+    dock_closed: Vec<(DockPanel, DockLocation<DockPanel>)>,
 }
 
 impl StudioApp {
@@ -69,6 +73,7 @@ impl StudioApp {
 
         let (prefs, _report) = SettingsStore::<Prefs>::open(Location::Auto);
         prefs.get().ui.theme.tokens().apply(&cc.egui_ctx);
+        let prefs_ui = prefs.get().ui.clone();
 
         let mut app = Self {
             registry,
@@ -90,10 +95,14 @@ impl StudioApp {
             window_title: String::new(),
             last_autosave: Instant::now(),
             last_workspace: Workspace::default(),
+            dock: crate::dock::default_layout(),
+            dock_closed: Vec::new(),
         };
-        // The session's workspace is the runtime source of truth; seed it from the saved prefs.
-        let workspace = app.ui_state().to_workspace();
-        lock(&app.session).set_workspace(workspace);
+        // The persisted layout is the starting arrangement; the session's workspace mirrors it.
+        app.dock = prefs_ui.dock;
+        app.dock_closed = prefs_ui.dock_closed;
+        app.sync_workspace_from_dock();
+        let workspace = lock(&app.session).workspace();
         app.last_workspace = workspace;
         app.report(app.dispatch("scene.load_default", &Value::Null));
         app
@@ -138,6 +147,79 @@ impl StudioApp {
     /// The currently selected theme.
     pub(crate) fn theme(&self) -> ThemeChoice {
         self.ui_state().theme
+    }
+
+    /// Reconcile the dock layout with the session's workspace visibility commands.
+    fn apply_workspace_to_dock(&mut self) {
+        let workspace = lock(&self.session).workspace();
+        let mut layout = self.dock.clone();
+        let mut closed = self.dock_closed.clone();
+        for panel in WorkspacePanel::ALL {
+            let dock_panels: &[DockPanel] = match panel {
+                WorkspacePanel::TextureSets => &[DockPanel::TextureSetList],
+                WorkspacePanel::Layers => &[DockPanel::Layers, DockPanel::Settings],
+                WorkspacePanel::Assets => &[DockPanel::Assets],
+                WorkspacePanel::ToolProperties | WorkspacePanel::ToolRail => continue,
+            };
+            let want = workspace.is_visible(panel);
+            let open = dock_panels.iter().any(|panel| layout.contains(panel));
+            if want && !open {
+                for panel in dock_panels {
+                    restore_dock_panel(&mut layout, &mut closed, *panel);
+                }
+            } else if !want && open {
+                for panel in dock_panels {
+                    if layout.contains(panel) {
+                        close_dock_panel(&mut layout, &mut closed, *panel);
+                    }
+                }
+            }
+        }
+        if layout != self.dock || closed != self.dock_closed {
+            self.dock = layout;
+            self.dock_closed = closed;
+            self.persist_dock();
+        }
+    }
+
+    /// Mirror the dock layout's panel visibility back into the session workspace.
+    fn sync_workspace_from_dock(&mut self) {
+        let mut session = lock(&self.session);
+        let mut workspace = session.workspace();
+        workspace.texture_sets = self.dock.contains(&DockPanel::TextureSetList);
+        workspace.layers = self.dock.contains(&DockPanel::Layers) || self.dock.contains(&DockPanel::Settings);
+        workspace.assets = self.dock.contains(&DockPanel::Assets);
+        session.set_workspace(workspace);
+    }
+
+    /// Persist the dock layout to the UI state.
+    fn persist_dock(&mut self) {
+        let dock = self.dock.clone();
+        let closed = self.dock_closed.clone();
+        self.update_ui(|state| {
+            state.dock = dock;
+            state.dock_closed = closed;
+        });
+    }
+
+    /// Apply one docking action from the renderer, tracking closed-panel locations.
+    fn apply_dock_action(&mut self, action: Action<DockPanel>) {
+        match &action {
+            Action::Close { panel } => {
+                if let Ok(location) = self.dock.location(panel) {
+                    self.dock_closed.retain(|(existing, _)| existing != panel);
+                    self.dock_closed.push((*panel, location));
+                }
+            }
+            Action::Open { panel, .. } | Action::OpenAt { panel, .. } => {
+                self.dock_closed.retain(|(existing, _)| existing != panel);
+            }
+            _ => {}
+        }
+        if let Err(err) = self.dock.apply_with_permissions(action, |panel| panel.permissions()) {
+            self.status = format!("dock: {err}");
+        }
+        self.persist_dock();
     }
 
     /// Dispatch a file command with a chosen path.
@@ -240,6 +322,28 @@ impl StudioApp {
     }
 }
 
+/// Close a dock panel, remembering where it was so it can be restored.
+fn close_dock_panel(layout: &mut Layout<DockPanel>, closed: &mut Vec<(DockPanel, DockLocation<DockPanel>)>, panel: DockPanel) {
+    if layout.contains(&panel)
+        && let Ok(location) = layout.location(&panel)
+        && layout.apply(Action::Close { panel }).is_ok()
+    {
+        closed.retain(|(existing, _)| *existing != panel);
+        closed.push((panel, location));
+    }
+}
+
+/// Restore a closed dock panel to its remembered location (or beside the viewport).
+fn restore_dock_panel(layout: &mut Layout<DockPanel>, closed: &mut Vec<(DockPanel, DockLocation<DockPanel>)>, panel: DockPanel) {
+    if let Some(index) = closed.iter().position(|(existing, _)| *existing == panel) {
+        let (_, location) = closed.remove(index);
+        if layout.restore(panel, &location).is_ok() {
+            return;
+        }
+    }
+    let _ = layout.apply(Action::Open { panel, anchor: Some(DockPanel::Viewport) });
+}
+
 /// Write an egui screenshot to a PNG.
 fn save_screenshot(path: &Path, image: &egui::ColorImage) -> Result<CommandOutcome, CommandError> {
     let [width, height] = image.size;
@@ -293,23 +397,18 @@ impl eframe::App for StudioApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        // Reconcile the dock with any workspace visibility commands first.
+        self.apply_workspace_to_dock();
         let workspace = lock(&self.session).workspace();
 
-        // Top chrome: the menu bar, then the contextual tool properties bar.
+        // Fixed chrome: the menu bar, the contextual tool properties bar and the tool rail.
         egui::Panel::top("sc.menu")
             .frame(egui::Frame::NONE.fill(Tokens::DARK.menu_bg).inner_margin(egui::Margin::symmetric(6, 2)))
             .show(ui, |ui| menu::menu_bar(self, ui));
         if workspace.tool_properties {
             egui::Panel::top("sc.tools").show(ui, |ui| toolbar::tool_properties_bar(self, ui));
         }
-
-        // Bottom chrome: the status bar, then the assets shelf (spans the full width).
         egui::Panel::bottom("sc.status").show(ui, |ui| self.status_bar(ui));
-        if workspace.assets {
-            egui::Panel::bottom("sc.assets").default_size(220.0).min_size(120.0).resizable(true).show(ui, |ui| self.assets_panel(ui));
-        }
-
-        // Side chrome, above the shelf.
         if workspace.tool_rail {
             egui::Panel::left("sc.rail")
                 .exact_size(40.0)
@@ -317,27 +416,37 @@ impl eframe::App for StudioApp {
                 .frame(egui::Frame::NONE.fill(Tokens::DARK.rail_bg).inner_margin(egui::Margin::symmetric(2, 4)))
                 .show(ui, |ui| tool_rail::tool_rail(self, ui));
         }
-        if workspace.texture_sets || workspace.layers {
-            egui::Panel::right("sc.right").default_size(300.0).min_size(220.0).resizable(true).show(ui, |ui| {
-                if workspace.texture_sets {
-                    self.texture_set_list_panel(ui);
-                }
-                if workspace.layers {
-                    if workspace.texture_sets {
-                        ui.separator();
-                    }
-                    self.right_section(ui);
-                    ui.separator();
-                    self.properties_panel(ui);
-                }
-            });
-        }
 
-        let mut action = None;
-        egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
-            action = self.viewport.show(ui, frame, &self.session, self.tool);
+        // The dockable workspace fills the rest.
+        let layout = self.dock.clone();
+        let style = DockStyle::from_ui(ui);
+        let mut viewport_action = None;
+        let output = egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
+            DockArea::<DockPanel>::new(egui::Id::new("sc.dock")).show(
+                ui,
+                &layout,
+                &style,
+                |panel| panel.label().to_string(),
+                |panel| panel.permissions(),
+                |ui, panel| match panel {
+                    DockPanel::Viewport => {
+                        viewport_action = self.viewport.show(ui, frame, &self.session, self.tool);
+                    }
+                    DockPanel::TextureSetList => self.texture_set_list_panel(ui),
+                    DockPanel::Layers => self.layer_stack_panel(ui),
+                    DockPanel::Settings => self.texture_set_settings_panel(ui),
+                    DockPanel::Properties => self.properties_panel(ui),
+                    DockPanel::Assets => self.assets_panel(ui),
+                },
+            )
         });
-        if let Some(action) = action {
+
+        // Apply docking gestures, then keep the workspace commands in sync.
+        for action in output.inner.actions {
+            self.apply_dock_action(action);
+        }
+        self.sync_workspace_from_dock();
+        if let Some(action) = viewport_action {
             self.handle_paint_action(action);
         }
     }

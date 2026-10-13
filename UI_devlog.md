@@ -116,3 +116,28 @@ persisted `config.toml`).
 
 Phase 5 completes the workspace redesign (`UI_roadmap.md`). Open follow-ups live on the individual
 phase entries (per-tile UDIM naming, collapsible sets, material/brush presets).
+
+## 2026-10-13 — Phase 6: dockable, tabbed panels
+
+Replaced the fixed `egui::Panel` right/bottom layout with `craft_ui::docking` so panels behave like
+Painter's dockers.
+
+- New `ui::dock`: `DockPanel` (`Viewport`, `TextureSetList`, `Layers`, `Settings`, `Properties`,
+  `Assets`) with ids/labels and permissions (Viewport = `PROTECTED`, tab-less; the rest fully
+  dockable), plus `default_layout()` reproducing Painter (viewport left, Texture Set List over the
+  Layers/Settings tabs over Properties on the right, Assets along the bottom).
+- `StudioApp::ui` now renders one `DockArea` in the central area (menu bar, tool properties bar, tool
+  rail and status bar stay fixed chrome). Panels are draggable, tabbable, splittable, floatable,
+  resizable and closable; `apply_dock_action` applies the renderer's `Action`s transactionally and
+  remembers closed-panel `Location`s so a reopen restores its place.
+- Layout + closed locations are persisted in `UiState` (`craft-ui` `serde` feature enabled). Two-way
+  sync with the session workspace: `apply_workspace_to_dock` reconciles `ui.set_panel` / `ui.
+  toggle_panel` (control channel) into the dock, and `sync_workspace_from_dock` mirrors user
+  open/close gestures back into the workspace flags. Removed the now-unused `right_section` and the
+  panels' own title headers (the tabs label them).
+
+Verified: `cargo xtask ci` green (18 crates, 92 commands); `Build/ui_dock_full.png` shows the tabbed
+right column (Texture Set List / Layers|Texture Set Settings / Properties) and the Assets bottom tab
+around the tab-less viewport. Over the control channel, `ui.set_panel {assets:false}` removed the
+Assets tab (`Build/ui_dock_noassets.png`) and `{assets:true}` restored it — proving the dock/workspace
+sync. Dragging/grouping/floating is provided and tested by `craft_ui` upstream.

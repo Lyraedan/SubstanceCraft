@@ -979,6 +979,7 @@ version = "0.1.0"
 source = "git+https://github.com/storytold/craft-libs?rev=666c358065261a2816b376fa3bb10538dbf53040#666c358065261a2816b376fa3bb10538dbf53040"
 dependencies = [
  "egui",
+ "serde",
 ]
 
 [[package]]

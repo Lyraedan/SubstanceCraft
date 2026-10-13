@@ -37,10 +37,16 @@ width, as in Painter):
 4. **Assets shelf** (`bottom`, `panels::assets_panel`) — a search box, filter tabs (All/Generators/
    Filters/Bake/Post) and the generators, filters, bake panel and post-effects.
 5. **Tool rail** (`left`, `tool_rail.rs`) — a fixed icon column for paint/orbit and every paint tool.
-6. **Right dock** (`right`, `panels.rs`) — the Texture Set List (top), a `Layers` /
-   `Texture Set Settings` tab strip (`state::RightTab`) and a `Properties` section (composited
-   preview plus the active brush).
-7. **Viewport** (`CentralPanel`) — the 3D renderer with a material dropdown overlay (top-right).
+6. **Dockable workspace** (`CentralPanel`, `craft_ui::docking`) — the remaining area is a `DockArea`
+   of [`dock::DockPanel`]s: the **Viewport** (a protected, tab-less panel), the **Texture Set List**,
+   the **Layers** / **Texture Set Settings** tab group, **Properties**, and the bottom **Assets**
+   shelf. Panels can be dragged, tabbed together, split, floated, resized and closed; the viewport
+   stays put. The arrangement ([`Layout<DockPanel>`](dock.rs)) is persisted in `UiState` and the
+   closed-panel locations are remembered so a reopen restores its place.
+   - The default arrangement mirrors Painter ([`dock::default_layout`]).
+   - `StudioApp` applies the renderer's docking `Action`s and keeps the session's workspace commands
+     in sync two-way, so `ui.set_panel` / `ui.toggle_panel` (control channel) close and reopen
+     dock panels exactly like the `Window` menu.
 
 Panels are resizable; visibility is persisted in `UiState` and toggled from the `Window` menu.
 
