@@ -26,8 +26,6 @@ const ASSET_FILTERS: &[(&str, &str, &str)] = &[
     ("Brushes", "brush", "brush"),
     ("Generators", "generator", "generator"),
     ("Filters", "filter", "filter"),
-    ("Bake", "assets", "bake"),
-    ("Post", "effect", "post"),
 ];
 
 /// An asset tile's thumbnail.
@@ -46,8 +44,6 @@ enum Thumb {
     BrushDab([f32; 4]),
     /// A black-to-white gradient (a filter sample).
     Gradient,
-    /// A centred icon, keyed by name.
-    Icon(&'static str),
 }
 
 /// One clickable asset in the shelf grid.
@@ -83,10 +79,6 @@ fn paint_thumb(ui: &egui::Ui, rect: egui::Rect, thumb: &Thumb, thumbs: &HashMap<
                 let strip = egui::Rect::from_min_size(egui::pos2(x, rect.top()), egui::vec2(step_width + 1.0, rect.height()));
                 painter.rect_filled(strip, egui::CornerRadius::ZERO, egui::Color32::from_gray((t * 255.0) as u8));
             }
-        }
-        Thumb::Icon(name) => {
-            let inner = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width() * 0.55, rect.height() * 0.55));
-            crate::icons::image(name, inner.width()).paint_at(ui, inner);
         }
     }
     painter.rect_stroke(rect, egui::CornerRadius::same(3), egui::Stroke::new(1.0, Tokens::DARK.border), egui::StrokeKind::Inside);
@@ -527,8 +519,8 @@ impl StudioApp {
         }
     }
 
-    /// The bottom assets shelf: a library selector, search, icon filter row and a thumbnail grid of
-    /// materials, brushes, generators and filters, with bake and post settings below.
+    /// The assets shelf: a library selector, search, icon filter row and a thumbnail grid of
+    /// materials, brushes, generators and filters.
     pub(crate) fn assets_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             let library = ASSET_LIBRARIES.get(self.asset_library).copied().unwrap_or("All Libraries");
@@ -633,40 +625,7 @@ impl StudioApp {
                 }
             }
         }
-        if show("bake") && matches("Bake Maps") {
-            tiles.push(AssetTile {
-                label: "Bake Maps".to_string(),
-                tooltip: "Bake the mesh maps".to_string(),
-                action: Some(("bake.run", Value::Null)),
-                thumb: Thumb::Icon("assets"),
-            });
-        }
-
         self.ensure_generator_thumbs(ui.ctx());
-
-        let (resolution, samples, high_poly, bake_revision, first_bake, log, vignette, bloom) = {
-            let session = lock(&self.session);
-            let first_bake = session.baked_maps().first().map(|(_, image)| (image.width, image.height, image.to_rgba8_linear()));
-            (
-                session.bake_settings().resolution,
-                session.bake_settings().samples,
-                session.high_poly().is_some(),
-                session.bake_revision(),
-                first_bake,
-                session.bake_log().to_vec(),
-                session.settings().vignette,
-                session.settings().bloom,
-            )
-        };
-        if let Some((width, height, bytes)) = &first_bake
-            && self.bake_preview.as_ref().is_none_or(|(revision, _)| *revision != bake_revision)
-        {
-            let color = egui::ColorImage::from_rgba_unmultiplied([*width as usize, *height as usize], bytes);
-            let handle = ui.ctx().load_texture("sc.bake_preview", color, egui::TextureOptions::LINEAR);
-            self.bake_preview = Some((bake_revision, handle));
-        }
-        let bake_preview = self.bake_preview.as_ref().map(|(_, handle)| handle.clone());
-        let has_bake = first_bake.is_some();
 
         let mut actions: Vec<(&'static str, Value)> = Vec::new();
         let thumbs = std::mem::take(&mut self.generator_thumbs);
@@ -694,70 +653,110 @@ impl StudioApp {
                     }
                 });
             }
-
-            if query.is_empty() && (category == "all" || category == "bake") {
-                ui.add_space(6.0);
-                ui.separator();
-                ui.strong("Bake Settings");
-                ui.horizontal(|ui| {
-                    ui.label("Res");
-                    for value in [128u32, 256, 512] {
-                        if ui.selectable_label(resolution == value, value.to_string()).clicked() {
-                            actions.push(("bake.set_resolution", json!({ "resolution": value })));
-                        }
-                    }
-                });
-                let mut samples_value = samples;
-                if ui.add(egui::Slider::new(&mut samples_value, 1..=64).text("AO Samples")).changed() {
-                    actions.push(("bake.set_samples", json!({ "samples": samples_value })));
-                }
-                ui.horizontal(|ui| {
-                    if ui.button("Import High-Poly…").clicked()
-                        && let Some(path) = rfd::FileDialog::new().add_filter("3D meshes", &["obj", "gltf", "glb"]).pick_file()
-                    {
-                        actions.push(("file.import_highpoly", json!({ "path": path.to_string_lossy() })));
-                    }
-                    if ui.add_enabled(high_poly, egui::Button::new("Clear")).clicked() {
-                        actions.push(("bake.clear_highpoly", Value::Null));
-                    }
-                });
-                if let Some(handle) = &bake_preview {
-                    ui.add(egui::Image::new(handle).fit_to_exact_size(egui::vec2(96.0, 96.0)));
-                }
-                if has_bake {
-                    for map in BakeMap::ALL {
-                        ui.horizontal(|ui| {
-                            ui.label(map.label());
-                            if ui.small_button("Save…").clicked()
-                                && let Some(path) =
-                                    rfd::FileDialog::new().add_filter("PNG", &["png"]).set_file_name(format!("{}.png", map.id())).save_file()
-                            {
-                                actions.push(("bake.save", json!({ "map": map.id(), "path": path.to_string_lossy() })));
-                            }
-                        });
-                    }
-                }
-                for line in &log {
-                    ui.label(egui::RichText::new(line).color(Tokens::DARK.text_dim));
-                }
-            }
-
-            if query.is_empty() && (category == "all" || category == "post") {
-                ui.add_space(6.0);
-                ui.separator();
-                ui.strong("Post");
-                let mut vignette_value = vignette;
-                if ui.add(egui::Slider::new(&mut vignette_value, 0.0..=1.0).text("Vignette")).changed() {
-                    actions.push(("viewport.set_vignette", json!({ "value": vignette_value })));
-                }
-                let mut bloom_value = bloom;
-                if ui.add(egui::Slider::new(&mut bloom_value, 0.0..=1.0).text("Bloom")).changed() {
-                    actions.push(("viewport.set_bloom", json!({ "value": bloom_value })));
-                }
-            }
         });
         self.generator_thumbs = thumbs;
 
+        for (id, params) in actions {
+            let outcome = self.dispatch(id, &params);
+            self.report(outcome);
+        }
+    }
+
+    /// The bake panel: mesh-map bake settings, high-poly import and the last bake.
+    pub(crate) fn bake_panel(&mut self, ui: &mut egui::Ui) {
+        let (resolution, samples, high_poly, bake_revision, first_bake, log) = {
+            let session = lock(&self.session);
+            let first_bake = session.baked_maps().first().map(|(_, image)| (image.width, image.height, image.to_rgba8_linear()));
+            (
+                session.bake_settings().resolution,
+                session.bake_settings().samples,
+                session.high_poly().is_some(),
+                session.bake_revision(),
+                first_bake,
+                session.bake_log().to_vec(),
+            )
+        };
+        if let Some((width, height, bytes)) = &first_bake
+            && self.bake_preview.as_ref().is_none_or(|(revision, _)| *revision != bake_revision)
+        {
+            let color = egui::ColorImage::from_rgba_unmultiplied([*width as usize, *height as usize], bytes);
+            let handle = ui.ctx().load_texture("sc.bake_preview", color, egui::TextureOptions::LINEAR);
+            self.bake_preview = Some((bake_revision, handle));
+        }
+        let bake_preview = self.bake_preview.as_ref().map(|(_, handle)| handle.clone());
+        let has_bake = first_bake.is_some();
+
+        let mut actions: Vec<(&'static str, Value)> = Vec::new();
+        egui::ScrollArea::vertical().id_salt("sc.bake").show(ui, |ui| {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label("Res");
+                for value in [128u32, 256, 512] {
+                    if ui.selectable_label(resolution == value, value.to_string()).clicked() {
+                        actions.push(("bake.set_resolution", json!({ "resolution": value })));
+                    }
+                }
+            });
+            let mut samples_value = samples;
+            if ui.add(egui::Slider::new(&mut samples_value, 1..=64).text("AO Samples")).changed() {
+                actions.push(("bake.set_samples", json!({ "samples": samples_value })));
+            }
+            ui.horizontal(|ui| {
+                if ui.button("Import High-Poly…").clicked()
+                    && let Some(path) = rfd::FileDialog::new().add_filter("3D meshes", &["obj", "gltf", "glb"]).pick_file()
+                {
+                    actions.push(("file.import_highpoly", json!({ "path": path.to_string_lossy() })));
+                }
+                if ui.add_enabled(high_poly, egui::Button::new("Clear")).clicked() {
+                    actions.push(("bake.clear_highpoly", Value::Null));
+                }
+            });
+            if ui.button("Bake Mesh Maps").clicked() {
+                actions.push(("bake.run", Value::Null));
+            }
+            if let Some(handle) = &bake_preview {
+                ui.add(egui::Image::new(handle).fit_to_exact_size(egui::vec2(96.0, 96.0)));
+            }
+            if has_bake {
+                for map in BakeMap::ALL {
+                    ui.horizontal(|ui| {
+                        ui.label(map.label());
+                        if ui.small_button("Save…").clicked()
+                            && let Some(path) =
+                                rfd::FileDialog::new().add_filter("PNG", &["png"]).set_file_name(format!("{}.png", map.id())).save_file()
+                        {
+                            actions.push(("bake.save", json!({ "map": map.id(), "path": path.to_string_lossy() })));
+                        }
+                    });
+                }
+            }
+            for line in &log {
+                ui.label(egui::RichText::new(line).color(Tokens::DARK.text_dim));
+            }
+        });
+
+        for (id, params) in actions {
+            let outcome = self.dispatch(id, &params);
+            self.report(outcome);
+        }
+    }
+
+    /// The post-effects panel.
+    pub(crate) fn post_panel(&mut self, ui: &mut egui::Ui) {
+        let (vignette, bloom) = {
+            let session = lock(&self.session);
+            (session.settings().vignette, session.settings().bloom)
+        };
+        let mut actions: Vec<(&'static str, Value)> = Vec::new();
+        ui.add_space(4.0);
+        let mut vignette_value = vignette;
+        if ui.add(egui::Slider::new(&mut vignette_value, 0.0..=1.0).text("Vignette")).changed() {
+            actions.push(("viewport.set_vignette", json!({ "value": vignette_value })));
+        }
+        let mut bloom_value = bloom;
+        if ui.add(egui::Slider::new(&mut bloom_value, 0.0..=1.0).text("Bloom")).changed() {
+            actions.push(("viewport.set_bloom", json!({ "value": bloom_value })));
+        }
         for (id, params) in actions {
             let outcome = self.dispatch(id, &params);
             self.report(outcome);

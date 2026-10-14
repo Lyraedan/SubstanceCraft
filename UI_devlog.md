@@ -141,3 +141,17 @@ right column (Texture Set List / Layers|Texture Set Settings / Properties) and t
 around the tab-less viewport. Over the control channel, `ui.set_panel {assets:false}` removed the
 Assets tab (`Build/ui_dock_noassets.png`) and `{assets:true}` restored it — proving the dock/workspace
 sync. Dragging/grouping/floating is provided and tested by `craft_ui` upstream.
+
+## 2026-10-13 — Bake and Post split into their own dock tabs
+
+- `DockPanel` gained `Bake` and `Post`; the default bottom group is now `Assets | Bake | Post` tabs.
+- `panels::assets_panel` lost its Bake/Post sections and the "Bake Maps" tile; the asset filters are
+  now All/Materials/Brushes/Generators/Filters. New `panels::bake_panel` (resolution, AO samples,
+  high-poly import/clear, Bake Mesh Maps, preview, per-map save, log) and `panels::post_panel`
+  (vignette, bloom) are their own render bodies.
+- `StudioApp::ensure_all_dock_panels` docks any panel missing from a restored layout (unless the user
+  closed it), so existing saved layouts pick up the new tabs. Bake/Post prefer the Assets group.
+- Build output lives in `Build/` (== `build/` on this case-insensitive filesystem).
+
+Verified: `cargo xtask ci` green (18 crates, 92 commands); `Build/ui_bakepost.png` shows the
+`Assets | Bake | Post` tab strip; release rebuilt into `build/`.

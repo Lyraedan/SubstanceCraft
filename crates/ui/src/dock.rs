@@ -25,12 +25,24 @@ pub enum DockPanel {
     Properties,
     /// The assets shelf.
     Assets,
+    /// Bake settings.
+    Bake,
+    /// Post-effects settings.
+    Post,
 }
 
 impl DockPanel {
     /// Every panel.
-    pub const ALL: [DockPanel; 6] =
-        [DockPanel::Viewport, DockPanel::TextureSetList, DockPanel::Layers, DockPanel::Settings, DockPanel::Properties, DockPanel::Assets];
+    pub const ALL: [DockPanel; 8] = [
+        DockPanel::Viewport,
+        DockPanel::TextureSetList,
+        DockPanel::Layers,
+        DockPanel::Settings,
+        DockPanel::Properties,
+        DockPanel::Assets,
+        DockPanel::Bake,
+        DockPanel::Post,
+    ];
 
     /// A stable id (for state and menus).
     pub fn id(self) -> &'static str {
@@ -41,6 +53,8 @@ impl DockPanel {
             DockPanel::Settings => "settings",
             DockPanel::Properties => "properties",
             DockPanel::Assets => "assets",
+            DockPanel::Bake => "bake",
+            DockPanel::Post => "post",
         }
     }
 
@@ -53,6 +67,8 @@ impl DockPanel {
             DockPanel::Settings => "Texture Set Settings",
             DockPanel::Properties => "Properties",
             DockPanel::Assets => "Assets",
+            DockPanel::Bake => "Bake",
+            DockPanel::Post => "Post",
         }
     }
 
@@ -90,7 +106,7 @@ pub fn default_layout() -> Layout<DockPanel> {
         axis: SplitAxis::Vertical,
         size: SplitSize::FixedSecond(180.0),
         first: Box::new(main),
-        second: Box::new(Node::Tabs { panels: vec![DockPanel::Assets], active: 0 }),
+        second: Box::new(Node::Tabs { panels: vec![DockPanel::Assets, DockPanel::Bake, DockPanel::Post], active: 0 }),
     };
     Layout { root: Some(root), floating: Vec::new() }
 }

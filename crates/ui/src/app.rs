@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use craft_settings::{Location, Settings, SettingsStore};
-use craft_ui::docking::{Action, DockArea, DockStyle, Layout, Location as DockLocation};
+use craft_ui::docking::{Action, DockArea, DockStyle, Layout, Location as DockLocation, Placement, Zone};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use substancecraft_engine::command::{CommandError, CommandOutcome, CommandRegistry};
@@ -101,6 +101,7 @@ impl StudioApp {
         // The persisted layout is the starting arrangement; the session's workspace mirrors it.
         app.dock = prefs_ui.dock;
         app.dock_closed = prefs_ui.dock_closed;
+        app.ensure_all_dock_panels();
         app.sync_workspace_from_dock();
         let workspace = lock(&app.session).workspace();
         app.last_workspace = workspace;
@@ -147,6 +148,33 @@ impl StudioApp {
     /// The currently selected theme.
     pub(crate) fn theme(&self) -> ThemeChoice {
         self.ui_state().theme
+    }
+
+    /// Dock any panel missing from a restored layout (e.g. a panel added in a newer version), unless
+    /// the user had explicitly closed it. Bake and Post prefer to join the Assets group.
+    fn ensure_all_dock_panels(&mut self) {
+        let mut layout = self.dock.clone();
+        for panel in DockPanel::ALL {
+            if panel == DockPanel::Viewport || layout.contains(&panel) || self.dock_closed.iter().any(|(closed, _)| *closed == panel) {
+                continue;
+            }
+            let preferred = matches!(panel, DockPanel::Bake | DockPanel::Post).then_some(DockPanel::Assets).filter(|anchor| layout.contains(anchor));
+            let anchor = preferred.or_else(|| {
+                DockPanel::ALL
+                    .iter()
+                    .copied()
+                    .find(|candidate| *candidate != panel && layout.contains(candidate) && candidate.permissions().accepts_tabs)
+            });
+            match anchor {
+                Some(anchor) => {
+                    let _ = layout.apply(Action::Open { panel, anchor: Some(anchor) });
+                }
+                None => {
+                    let _ = layout.apply(Action::OpenAt { panel, anchor: DockPanel::Viewport, placement: Placement::Split(Zone::Right) });
+                }
+            }
+        }
+        self.dock = layout;
     }
 
     /// Reconcile the dock layout with the session's workspace visibility commands.
@@ -437,6 +465,8 @@ impl eframe::App for StudioApp {
                     DockPanel::Settings => self.texture_set_settings_panel(ui),
                     DockPanel::Properties => self.properties_panel(ui),
                     DockPanel::Assets => self.assets_panel(ui),
+                    DockPanel::Bake => self.bake_panel(ui),
+                    DockPanel::Post => self.post_panel(ui),
                 },
             )
         });
