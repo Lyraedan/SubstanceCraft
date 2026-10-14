@@ -4,21 +4,27 @@ Where SubstanceCraft stands against Adobe Substance 3D Painter, dimension by dim
 lines carry the date; update the dimension when your work moves it. SubstanceCraft is a clean-room
 reimplementation: parity means comparable behaviour and results, never copied code or assets.
 
-_Last reviewed: 2026-10-13 (M11 complete)._
+_Last reviewed: 2026-10-15 (M12 complete)._
 
 | Dimension | Weight | Status | Notes |
 |---|---|---|---|
 | Project & texture-set workflow | high | 40% | Split by material, per-set channels/resolution/UDIM, solo, save/open (M2, M10). |
-| Layer stack & blending | high | 45% | Fill/group layers, masks, 8 blend modes, opacity, visibility, undo/redo; CPU + GPU compositor (M3). |
-| Painting engine | high | 62% | Brush/eraser/smudge/clone/polyfill, screen-space sizing, symmetry, jitter, active-layer target, live composited result (M4–M5). |
-| Procedural content (generators/filters/smart materials) | high | 45% | Generators, filters, effect layers, editable parameters, shelf (M6). |
+| Layer stack & blending | high | 45% | Fill/group layers, constant masks, 8 blend modes, opacity, visibility, undo/redo; CPU + GPU compositor (M3). |
+| Parts & geometry selection | high | 0% | No connected-piece / UV-island / imported-object / material-ID selection, isolate/hide or model context menu. |
+| Painting engine | high | 62% | Brush/eraser/smudge/clone/polyfill, screen-space sizing, symmetry, jitter, active-layer target, live composited result; no alpha tips, stencils, lazy mouse or eyedropper (M4–M5). |
+| Procedural content (generators/filters/smart materials) | high | 45% | Generators, filters, effect layers, editable parameters, shelf; no smart materials/masks or grunge library (M6). |
+| Content library (shelf) | high | 10% | Generators/filters only; no materials, smart materials/masks, HDRI/environment library, textures shelf, search/filter or on-disk user library. |
 | Baking (mesh maps + cage) | high | 50% | BVH-accelerated bakers, high-poly import, save to PNG (M7). |
-| Export (presets, channels, UDIM, OpenPBR) | high | 55% | Channel export (PNG 8/16, TGA, EXR), presets, packing, naming, UDIM, round-trip (M8). |
-| Viewport & PBR preview | medium | 90% | Import, camera, PBR, IBL, tone mapping, display modes, grid, wireframe, composited base colour, post-effects, snapshot. |
+| Export (presets, channels, UDIM, OpenPBR) | high | 55% | Channel export (PNG 8/16, TGA, EXR), presets, packing, naming, UDIM, round-trip; no UV padding, height-into-normal or DirectX templates (M8). |
+| Import & export interop | medium | 45% | glTF/OBJ import, channel export; no FBX, no texture-set import, no UV padding/height-into-normal/DirectX templates. |
+| Viewport & PBR preview | medium | 90% | Import, camera, PBR, IBL, tone mapping, display modes, grid, wireframe, composited base colour, post-effects, snapshot; no 2D UV view or AO/height modes. |
 | Shaders (OpenPBR / ASM) | medium | 35% | Per-set shader selection, editable params, post-effects (M9). |
+| Shell & onboarding UX | low | 20% | Dock, menus and shortcuts exist; no welcome/quick-start/recent-files, preferences, shortcuts dialog or history jump. |
 | Automation & scripting | medium | 70% | 93 commands; JSON control channel, **MCP server**, headless CLI script runner, introspection (M0–M11). |
 | Native project format | medium | 55% | `.sccraft` (RON via `craft-atomic`), versioned, save/open/save-as/new, title + dirty, autosave/recovery (M10). |
 | Performance | medium | 30% | `cargo xtask perf` + budgets + baseline; viewport re-composites only on change (M12). No release packaging. |
+| Release & diagnostics | medium | 15% | Perf harness present; no installers, auto-update, crash-recovery prompt, crash logs or bug-report dialog. |
+| Web (wasm/WebGPU) | low | 0% | Candidate target alongside the native app; not built today. |
 
 ## Polish (M12) — engine complete, packaging deferred
 
@@ -66,6 +72,8 @@ _Last reviewed: 2026-10-13 (M11 complete)._
 - [x] Round-trip test: exported PNGs re-import to identical values.
 - [ ] Per-tile UDIM content (painting is not UDIM-aware yet).
 - [ ] USD/OpenPBR material export; batch export across texture sets; saved preset/config files.
+- [ ] UV padding options; height baked into exported normals; DirectX-normal and packed-map templates; sRGB assignment only for colour channels.
+- [ ] Import a texture set as one material (name matching, gloss→roughness, DirectX→OpenGL normal).
 
 ## Baking (M7) — complete
 
@@ -87,6 +95,10 @@ _Last reviewed: 2026-10-13 (M11 complete)._
 - [ ] Grunge/curvature/AO-driven grunge.
 - [x] Editable effect parameters (generator/filter) in the layer panel via `layer.set_effect`.
 - [ ] GPU compositing of effect layers (CPU path today).
+- [ ] Material presets and a materials library.
+- [ ] HDRI/environment library and a textures shelf.
+- [ ] Shelf search / category filters and drag-and-drop onto the model, layers or channels.
+- [ ] On-disk user library (imported tips/HDRIs, saved smart materials/masks/presets).
 
 ## Painting tools (M5) — complete
 
@@ -97,6 +109,10 @@ _Last reviewed: 2026-10-13 (M11 complete)._
 - [x] Tool palette and per-tool brush controls in the UI.
 - [ ] Native pen pressure/tilt (`substancecraft-tablet`).
 - [ ] Physics brushes; streamed/GPU painting; BVH raycast.
+- [ ] Brush alpha tips, lazy mouse and straight-line (Shift) strokes.
+- [ ] Stencils (paint through a placed image); triangle/element polyfill modes.
+- [ ] Eyedropper (linear material pick; Shift = all channels) and mask eraser.
+- [ ] Saved brush presets.
 
 ## Painting (M4) — complete
 
@@ -119,6 +135,9 @@ _Last reviewed: 2026-10-13 (M11 complete)._
 - [x] Undo/redo through commands (snapshot-based).
 - [ ] GPU compositor for groups/effects/painted layers.
 - [ ] Composited channels driving the 3D viewport (lands with painting, M4).
+- [ ] 32 blend modes (8 today) and per-channel opacity.
+- [ ] Image and mesh-map fill sources with UV/tri-planar/planar projection, tiling and per-channel strength.
+- [ ] Painted, image and geometry masks (constant coverage only today).
 
 ## Texture sets & UV tiles (M2) — complete
 
@@ -135,6 +154,8 @@ _Last reviewed: 2026-10-13 (M11 complete)._
 
 - [x] App window, theme, command registry, control channel (M0).
 - [x] Mesh import (glTF, OBJ) with tangents.
+- [ ] FBX import.
+- [ ] 2D UV view of every channel and baked map, with UV wireframe.
 - [x] Orbit/pan/dolly/focus camera; perspective and orthographic.
 - [x] Metal/rough PBR shading.
 - [x] Image-based lighting from an HDRI (`.hdr`/`.exr`) with a hemisphere fallback.
@@ -150,6 +171,18 @@ _Last reviewed: 2026-10-13 (M11 complete)._
 - [x] Drives the live session (scene import, display mode, environment, framing).
 - [x] `ui.screenshot` (live window capture to PNG).
 - [ ] MCP server.
+
+## Newly identified (post-M12)
+
+- [ ] Parts workflow: select a connected piece / UV island / imported object / material ID and fill
+      it, paint only there, mask a layer or add a generator; isolate (`I`) / hide (`H`); model context menu.
+- [ ] Content library: material presets, smart materials, smart masks, HDRI/environment library,
+      textures shelf, search/filter, drag-and-drop and an on-disk user library.
+- [ ] Shell & onboarding: welcome/quick-start, recent files, preferences and keyboard-shortcuts
+      dialogs, and a history panel with click-to-jump.
+- [ ] Release & diagnostics: installers (macOS/Windows/Linux), desktop auto-update, a crash-recovery
+      startup prompt, crash logs and a bug-report dialog.
+- [ ] Web build (wasm/WebGPU) as a candidate target alongside the native app.
 
 See the per-dimension checklists: `viewport-parity.md`, `layerstack-parity.md`, `brush-parity.md`,
 `baking-parity.md`, `export-parity.md`.
