@@ -15,7 +15,7 @@ pub mod project;
 pub mod shader;
 
 pub use layers::{BlendMode, Layer, LayerKind, LayerStack, Mask};
-pub use procedural::{Effect, Filter, Generator};
+pub use procedural::{Effect, Filter, Generator, Param};
 pub use project::{Channel, Project, TextureSet, UvTile};
 pub use shader::{Shader, ShaderParams};
 

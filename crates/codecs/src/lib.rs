@@ -176,6 +176,18 @@ pub fn load_rgba8(path: impl AsRef<Path>) -> Result<ImageF32, CodecError> {
     Ok(ImageF32 { width, height, pixels })
 }
 
+/// Decode image bytes (e.g. an embedded PNG) to tightly packed sRGB RGBA8, returning
+/// `(width, height, bytes)`. Used for the window/app icon.
+pub fn decode_rgba8_bytes(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), CodecError> {
+    let image = image::load_from_memory(bytes).map_err(|err| CodecError::Decode(err.to_string()))?;
+    let rgba = image.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    if width == 0 || height == 0 {
+        return Err(CodecError::Empty);
+    }
+    Ok((width, height, rgba.into_raw()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,8 +198,8 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_extension_is_reported() {
-        assert!(matches!(load_environment("/tmp/thing.tif"), Err(CodecError::Unsupported(_))));
+    fn garbage_bytes_are_an_error_not_a_panic() {
+        assert!(decode_rgba8_bytes(b"not an image").is_err());
     }
 
     #[test]

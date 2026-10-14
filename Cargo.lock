@@ -4118,6 +4118,7 @@ dependencies = [
  "eframe",
  "egui",
  "substancecraft-automation",
+ "substancecraft-codecs",
  "substancecraft-engine",
  "substancecraft-ui",
 ]

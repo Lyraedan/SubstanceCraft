@@ -27,7 +27,7 @@ _Last reviewed: 2026-10-13 (M12 complete)._
 7. **One shading model**; specular parameter unused; no anchors/instancing/physical size; cheap post-effects.
 8. **Per-tile UDIM content**; no USD/OpenPBR material export, saved presets, batch export, edge padding.
 9. **No cage mesh/skew**; per-map settings; baked maps not wired into generators; CPU baker.
-10. **No smart materials/masks**; filter/generator params not editable in the UI.
+10. **No smart materials/masks**; no grunge library; effect parameters are editable (layer panel + `layer.set_effect`).
 11. **No native pen pressure/tilt; no physics brushes; CPU painting; not UDIM-aware.**
 12. **GPU compositor limited to flat fill stacks; masks are constants; undo snapshots the whole set list.**
 13. **AO/height display modes; grid alignment; camera persistence; prefiltered IBL; selection outline.**

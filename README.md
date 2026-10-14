@@ -30,7 +30,7 @@ workflow.
 - **Export** — per-channel PNG 8/16-bit, TGA and EXR with presets (OpenPBR/glTF/Unreal/Unity/Spec-
   Gloss), channel packing, naming templates and UDIM naming.
 - **Projects** — a crash-safe, versioned `.sccraft` format with save/open/as-new, autosave and recovery.
-- **Automation** — 85 commands, a JSON control channel, a Model Context Protocol server, and a
+- **Automation** — 93 commands, a JSON control channel, a Model Context Protocol server, and a
   headless CLI with a script runner.
 
 ## Status

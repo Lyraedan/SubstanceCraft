@@ -22,6 +22,7 @@ pub fn specs() -> Vec<CommandSpec> {
             add_generator,
         ),
         CommandSpec::new("layer.add_filter", "Add Filter", "Window", "filter: levels|blur|invert|contrast|brightness, radius?: number", add_filter),
+        CommandSpec::new("layer.set_effect", "Set Effect Parameters", "Window", "index: number, <param>: number", set_effect),
         CommandSpec::new("layer.delete", "Delete Layer", "Window", "index: number", delete),
         CommandSpec::new("layer.set_visible", "Set Layer Visible", "Window", "index: number, visible: bool", set_visible),
         CommandSpec::new("layer.set_opacity", "Set Layer Opacity", "Window", "index: number, opacity: number (0..1)", set_opacity),
@@ -68,6 +69,11 @@ fn list(session: &mut Session, _params: &Value) -> CommandResult {
             }
             if let LayerKind::Effect { effect } = &layer.kind {
                 entry.insert("effect".into(), json!(effect.id()));
+                let mut params = Map::new();
+                for param in effect.params() {
+                    params.insert(param.key.into(), json!(param.value));
+                }
+                entry.insert("effect_params".into(), Value::Object(params));
             }
             Value::Object(entry)
         })
@@ -136,6 +142,29 @@ fn add_filter(session: &mut Session, params: &Value) -> CommandResult {
     let label = filter.label().to_string();
     session.add_layer(Layer::effect(label.clone(), Effect::Filter(filter)));
     Ok(CommandOutcome::message(format!("added {label}")))
+}
+
+fn set_effect(session: &mut Session, params: &Value) -> CommandResult {
+    let index = required_index("layer.set_effect", params)?;
+    let Some(effect) = session.layers().and_then(|stack| stack.get(index)).and_then(Layer::effect_kind) else {
+        return Err(invalid("layer.set_effect", &format!("layer {index} is not an effect layer")));
+    };
+    let mut updated = effect;
+    let mut applied = 0usize;
+    for param in effect.params() {
+        if let Some(value) = optional_f32(params, param.key) {
+            updated = updated.set_param(param.key, value);
+            applied += 1;
+        }
+    }
+    if applied == 0 {
+        return Err(invalid("layer.set_effect", "expected at least one effect parameter"));
+    }
+    if session.set_layer_effect(index, updated) {
+        Ok(CommandOutcome::message(format!("layer {index} effect set ({applied} param)")))
+    } else {
+        Err(invalid("layer.set_effect", &format!("no layer at index {index}")))
+    }
 }
 
 fn with_seed(generator: Generator, seed: u32) -> Generator {
@@ -379,5 +408,31 @@ mod tests {
         assert!(matches!(stack.get(1).and_then(|l| l.effect_kind()), Some(Effect::Filter(_))));
         assert!(add_generator(&mut session, &json!({ "generator": "plasma" })).is_err());
         assert!(add_filter(&mut session, &json!({ "filter": "warp" })).is_err());
+    }
+
+    #[test]
+    fn editing_effect_parameters_clamps_and_validates() {
+        let mut session = Session::new("test");
+        add_generator(&mut session, &json!({ "generator": "perlin" })).expect("generator");
+        assert!(set_effect(&mut session, &json!({ "index": 0, "scale": 16.0, "octaves": 2 })).is_ok());
+        let effect = session.layers().and_then(|stack| stack.get(0)).and_then(|l| l.effect_kind()).expect("effect");
+        assert_eq!(effect, Effect::Generator(Generator::Perlin { scale: 16.0, octaves: 2, seed: 0 }));
+        assert!(set_effect(&mut session, &json!({ "index": 0, "scale": 9999.0 })).is_ok());
+        let effect = session.layers().and_then(|stack| stack.get(0)).and_then(|l| l.effect_kind()).expect("effect");
+        assert_eq!(effect, Effect::Generator(Generator::Perlin { scale: 256.0, octaves: 2, seed: 0 }));
+        assert!(set_effect(&mut session, &json!({ "index": 0 })).is_err());
+        assert!(set_effect(&mut session, &json!({ "index": 9, "scale": 2.0 })).is_err());
+        add_fill(&mut session, &Value::Null).expect("fill");
+        assert!(set_effect(&mut session, &json!({ "index": 1, "scale": 2.0 })).is_err());
+    }
+
+    #[test]
+    fn listing_effects_includes_parameters() {
+        let mut session = Session::new("test");
+        add_generator(&mut session, &json!({ "generator": "voronoi", "seed": 3 })).expect("generator");
+        let data = list(&mut session, &Value::Null).expect("list").data.expect("data");
+        let entry = data.as_array().and_then(|layers| layers.first()).expect("entry");
+        assert_eq!(entry.get("effect").and_then(Value::as_str), Some("voronoi"));
+        assert_eq!(entry.get("effect_params").and_then(|p| p.get("seed")).and_then(Value::as_f64), Some(3.0));
     }
 }

@@ -155,3 +155,25 @@ sync. Dragging/grouping/floating is provided and tested by `craft_ui` upstream.
 
 Verified: `cargo xtask ci` green (18 crates, 92 commands); `Build/ui_bakepost.png` shows the
 `Assets | Bake | Post` tab strip; release rebuilt into `build/`.
+
+## 2026-10-14 — Effect parameter editor in the Layers panel
+
+- The selected layer's controls now show an effect layer's parameters below the mask: float sliders
+  and integer drag controls (octaves/seed/radius), driven by `doc::Param` ranges (`LayerView` gained
+  `effect: Option<Effect>`). Edits dispatch `layer.set_effect`, so the UI and the control channel do
+  the same thing. Invert (no parameters) shows only its id.
+- The Layers panel switched from a two-column list|properties split to a Painter-style vertical
+  layout (list on top, selected-layer properties below) inside one `ScrollArea`, so effect parameters
+  have the full panel width and overflow scrolls instead of clipping. The default Layers height rose
+  to 300.
+
+Verified: `cargo clippy -p substancecraft-ui --all-targets -D warnings` clean; 13 ui tests pass; a
+Perlin layer's scale/octaves/seed round-trip through `layer.set_effect` / `layer.list`; screenshot
+`Build/ui_effect_params.png` shows the layer row, Blend/Opacity/Mask and the `perlin parameters`
+section with the Scale slider.
+
+## 2026-10-14 — App/window icon
+
+- `assets/icon.png` is decoded at startup (`substancecraft-codecs::decode_rgba8_bytes`, new) and set
+  as the eframe window icon (`with_icon`). A decode failure warns and falls back to the default, never
+  panics. No new asset licence (original icon).

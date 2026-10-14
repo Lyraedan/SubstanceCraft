@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use substancecraft_bake::{BakeMap, BakeSettings, Baker};
 use substancecraft_codecs::ImageF32;
-use substancecraft_doc::{BlendMode, Channel, Layer, LayerKind, LayerStack, Mask, Project, Scene, Shader, ShaderParams, TextureSet, UvTile};
+use substancecraft_doc::{BlendMode, Channel, Effect, Layer, LayerKind, LayerStack, Mask, Project, Scene, Shader, ShaderParams, TextureSet, UvTile};
 use substancecraft_paint::{BrushSettings, StrokeState, ToolKind, clone_stamp, erase_stamp, paint_stamp, smudge_stamp};
 use substancecraft_raster::RasterImage;
 use substancecraft_render::{OrbitCamera, RenderSettings};
@@ -508,6 +508,25 @@ impl Session {
             .active_set()
             .and_then(|set| set.layers.get(index))
             .is_some_and(|layer| matches!(layer.kind, substancecraft_doc::LayerKind::Fill { .. }))
+    }
+
+    /// Replace an effect layer's effect (e.g. after editing its parameters). Returns false if the
+    /// layer is missing or not an effect.
+    pub fn set_layer_effect(&mut self, index: usize, effect: Effect) -> bool {
+        if !self.layer_is_effect(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| {
+            if let LayerKind::Effect { effect: slot } = &mut layer.kind {
+                *slot = effect;
+            }
+        });
+        true
+    }
+
+    fn layer_is_effect(&self, index: usize) -> bool {
+        self.project.active_set().and_then(|set| set.layers.get(index)).is_some_and(|layer| matches!(layer.kind, LayerKind::Effect { .. }))
     }
 
     /// Move a layer up or down in the stack.

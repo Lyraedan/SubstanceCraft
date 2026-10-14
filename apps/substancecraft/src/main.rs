@@ -16,11 +16,27 @@ fn main() -> eframe::Result<()> {
     }
 
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_title("SubstanceCraft").with_inner_size([1600.0, 950.0]).with_min_inner_size([960.0, 600.0]),
+        viewport: egui::ViewportBuilder::default()
+            .with_title("SubstanceCraft")
+            .with_inner_size([1600.0, 950.0])
+            .with_min_inner_size([960.0, 600.0])
+            .with_icon(app_icon()),
         ..Default::default()
     };
 
     eframe::run_native("SubstanceCraft", options, Box::new(move |cc| Ok(Box::new(StudioApp::new(cc, registry, session)))))
+}
+
+/// The window/app icon, decoded from the embedded PNG. Falls back to the egui default if it cannot
+/// be decoded (never panics).
+fn app_icon() -> egui::IconData {
+    match substancecraft_codecs::decode_rgba8_bytes(include_bytes!("../../../assets/icon.png")) {
+        Ok((width, height, rgba)) => egui::IconData { rgba, width, height },
+        Err(err) => {
+            eprintln!("warning: could not decode the app icon: {err}");
+            egui::IconData::default()
+        }
+    }
 }
 
 /// Start the JSON control channel on a background thread. Failures are reported, not fatal.

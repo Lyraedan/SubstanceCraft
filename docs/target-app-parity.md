@@ -11,12 +11,12 @@ _Last reviewed: 2026-10-13 (M11 complete)._
 | Project & texture-set workflow | high | 40% | Split by material, per-set channels/resolution/UDIM, solo, save/open (M2, M10). |
 | Layer stack & blending | high | 45% | Fill/group layers, masks, 8 blend modes, opacity, visibility, undo/redo; CPU + GPU compositor (M3). |
 | Painting engine | high | 62% | Brush/eraser/smudge/clone/polyfill, screen-space sizing, symmetry, jitter, active-layer target, live composited result (M4–M5). |
-| Procedural content (generators/filters/smart materials) | high | 40% | Generators, filters, effect layers, shelf (M6). |
+| Procedural content (generators/filters/smart materials) | high | 45% | Generators, filters, effect layers, editable parameters, shelf (M6). |
 | Baking (mesh maps + cage) | high | 50% | BVH-accelerated bakers, high-poly import, save to PNG (M7). |
 | Export (presets, channels, UDIM, OpenPBR) | high | 55% | Channel export (PNG 8/16, TGA, EXR), presets, packing, naming, UDIM, round-trip (M8). |
 | Viewport & PBR preview | medium | 90% | Import, camera, PBR, IBL, tone mapping, display modes, grid, wireframe, composited base colour, post-effects, snapshot. |
 | Shaders (OpenPBR / ASM) | medium | 35% | Per-set shader selection, editable params, post-effects (M9). |
-| Automation & scripting | medium | 70% | 85 commands; JSON control channel, **MCP server**, headless CLI script runner, introspection (M0–M11). |
+| Automation & scripting | medium | 70% | 93 commands; JSON control channel, **MCP server**, headless CLI script runner, introspection (M0–M11). |
 | Native project format | medium | 55% | `.sccraft` (RON via `craft-atomic`), versioned, save/open/save-as/new, title + dirty, autosave/recovery (M10). |
 | Performance | medium | 30% | `cargo xtask perf` + budgets + baseline; viewport re-composites only on change (M12). No release packaging. |
 
@@ -30,7 +30,7 @@ _Last reviewed: 2026-10-13 (M11 complete)._
 
 ## Automation (M11) — complete
 
-- [x] Every user-visible action is a registered command (85 commands with id/label/menu/params).
+- [x] Every user-visible action is a registered command (93 commands with id/label/menu/params).
 - [x] JSON control channel (`system.ping`, `system.list_commands`, `system.describe`, dispatch) shared with the live app session.
 - [x] Introspection commands: `session.info`, `scene.info`, `viewport.state`, `app.capabilities`.
 - [x] **MCP server** over stdio: `initialize`, `tools/list`, `tools/call` (id `.` → `_`).
@@ -84,7 +84,8 @@ _Last reviewed: 2026-10-13 (M11 complete)._
 - [x] Effect layers: a generator fills, a filter transforms the pixels below; opacity blends the filter.
 - [x] Shelf panel listing generators and filters with one-click add; live composite preview.
 - [ ] Smart materials / masks (saved layer-stack snippets).
-- [ ] Grunge/curvature/AO-driven grunge; per-filter parameters UI beyond defaults.
+- [ ] Grunge/curvature/AO-driven grunge.
+- [x] Editable effect parameters (generator/filter) in the layer panel via `layer.set_effect`.
 - [ ] GPU compositing of effect layers (CPU path today).
 
 ## Painting tools (M5) — complete

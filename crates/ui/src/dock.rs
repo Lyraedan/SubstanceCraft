@@ -91,7 +91,7 @@ pub fn default_layout() -> Layout<DockPanel> {
         first: Box::new(Node::Tabs { panels: vec![DockPanel::TextureSetList], active: 0 }),
         second: Box::new(Node::Split {
             axis: SplitAxis::Vertical,
-            size: SplitSize::FixedFirst(220.0),
+            size: SplitSize::FixedFirst(300.0),
             first: Box::new(Node::Tabs { panels: vec![DockPanel::Layers, DockPanel::Settings], active: 0 }),
             second: Box::new(Node::Tabs { panels: vec![DockPanel::Properties], active: 0 }),
         }),

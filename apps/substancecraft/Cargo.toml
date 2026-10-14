@@ -21,5 +21,6 @@ workspace = true
 substancecraft-engine.workspace = true
 substancecraft-ui.workspace = true
 substancecraft-automation.workspace = true
+substancecraft-codecs.workspace = true
 eframe.workspace = true
 egui.workspace = true

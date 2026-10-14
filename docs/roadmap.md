@@ -14,7 +14,7 @@ bake and export; the remaining work is polish, depth and release:
    physical size.
 3. **Painting depth** — native pen pressure/tilt, physics brushes, GPU/streamed painting, UDIM-aware
    painting, active-layer eraser.
-4. **Content** — smart materials/masks, a grunge library, editable filter/generator parameters.
+4. **Content** — smart materials/masks, a grunge library, saved material/brush presets.
 5. **Performance** — GPU compositor for full stacks, BVH everywhere, a binary project container.
 
 See `docs/gaps.md` for the ranked work list and `perf/budgets.toml` for the enforced budgets.

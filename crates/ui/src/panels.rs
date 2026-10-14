@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use serde_json::{Value, json};
 use substancecraft_bake::BakeMap;
-use substancecraft_doc::{BlendMode, Channel, Filter, Generator, LayerKind, Material, Shader, TextureSet, UvTile};
+use substancecraft_doc::{BlendMode, Channel, Effect, Filter, Generator, LayerKind, Material, Shader, TextureSet, UvTile};
 use substancecraft_engine::session::lock;
 use substancecraft_paint::ToolKind;
 
@@ -124,6 +124,7 @@ struct LayerView {
     mask: Option<f32>,
     color: Option<[f32; 4]>,
     value: Option<f32>,
+    effect: Option<Effect>,
 }
 
 /// Build a UI view of a layer.
@@ -141,7 +142,16 @@ fn layer_view(layer: &substancecraft_doc::Layer) -> LayerView {
         mask: layer.mask.map(|mask| mask.coverage()),
         color,
         value,
+        effect: layer.effect_kind(),
     }
+}
+
+/// Append a `layer.set_effect` action for a single parameter change.
+fn push_effect_param(actions: &mut Vec<(&'static str, Value)>, index: usize, key: &'static str, value: f32) {
+    let mut params = serde_json::Map::new();
+    params.insert("index".into(), json!(index));
+    params.insert(key.into(), json!(value));
+    actions.push(("layer.set_effect", Value::Object(params)));
 }
 
 /// A flattened view of one texture set for the list tree.
@@ -371,30 +381,28 @@ impl StudioApp {
         let mut actions: Vec<(&'static str, Value)> = Vec::new();
         let mut active_layer = self.active_layer;
 
-        ui.columns(2, |columns| {
-            egui::ScrollArea::vertical().id_salt("sc.layers.list").show(&mut columns[0], |ui| {
-                for (index, view) in views.iter().enumerate().rev() {
-                    ui.horizontal(|ui| {
-                        let icon = if view.visible { "visibility" } else { "hidden" };
-                        if ui.add(egui::Button::image(icons::image(icon, 13.0)).frame(false)).clicked() {
-                            actions.push(("layer.set_visible", json!({ "index": index, "visible": !view.visible })));
-                        }
-                        let label = format!("{}  [{}]", view.name, view.type_id);
-                        if ui.selectable_label(index == active_layer, label).clicked() {
-                            active_layer = index;
-                            actions.push(("layer.select", json!({ "index": index })));
-                        }
-                    });
-                }
-                if views.is_empty() {
-                    ui.label(egui::RichText::new("No layers — add a fill layer").color(Tokens::DARK.text_dim));
-                }
-            });
+        egui::ScrollArea::vertical().id_salt("sc.layers").show(ui, |ui| {
+            for (index, view) in views.iter().enumerate().rev() {
+                ui.horizontal(|ui| {
+                    let icon = if view.visible { "visibility" } else { "hidden" };
+                    if ui.add(egui::Button::image(icons::image(icon, 13.0)).frame(false)).clicked() {
+                        actions.push(("layer.set_visible", json!({ "index": index, "visible": !view.visible })));
+                    }
+                    let label = format!("{}  [{}]", view.name, view.type_id);
+                    if ui.selectable_label(index == active_layer, label).clicked() {
+                        active_layer = index;
+                        actions.push(("layer.select", json!({ "index": index })));
+                    }
+                });
+            }
+            if views.is_empty() {
+                ui.label(egui::RichText::new("No layers — add a fill layer").color(Tokens::DARK.text_dim));
+            }
 
-            let column = &mut columns[1];
             if let Some(view) = views.get(active_layer) {
                 let index = active_layer;
-                column.horizontal(|ui| {
+                ui.separator();
+                ui.horizontal(|ui| {
                     ui.label("Blend");
                     egui::ComboBox::from_id_salt("sc.layer.blend").selected_text(view.blend.label()).show_ui(ui, |ui| {
                         for mode in BlendMode::ALL {
@@ -405,12 +413,12 @@ impl StudioApp {
                     });
                 });
                 let mut opacity = view.opacity;
-                if column.add(egui::Slider::new(&mut opacity, 0.0..=1.0).text("Opacity")).changed() {
+                if ui.add(egui::Slider::new(&mut opacity, 0.0..=1.0).text("Opacity")).changed() {
                     actions.push(("layer.set_opacity", json!({ "index": index, "opacity": opacity })));
                 }
                 if let Some(color) = view.color {
                     let mut rgba = color;
-                    column.horizontal(|ui| {
+                    ui.horizontal(|ui| {
                         ui.label("Color");
                         if ui.color_edit_button_rgba_unmultiplied(&mut rgba).changed() {
                             actions.push(("layer.set_fill_color", json!({ "index": index, "color": rgba })));
@@ -419,11 +427,11 @@ impl StudioApp {
                 }
                 if let Some(value) = view.value {
                     let mut scalar = value;
-                    if column.add(egui::Slider::new(&mut scalar, 0.0..=1.0).text("Value")).changed() {
+                    if ui.add(egui::Slider::new(&mut scalar, 0.0..=1.0).text("Value")).changed() {
                         actions.push(("layer.set_fill_value", json!({ "index": index, "value": scalar })));
                     }
                 }
-                column.horizontal(|ui| {
+                ui.horizontal(|ui| {
                     let mut masked = view.mask.is_some();
                     if ui.checkbox(&mut masked, "Mask").changed() {
                         let value = if masked { json!(1.0) } else { Value::Null };
@@ -436,6 +444,29 @@ impl StudioApp {
                         }
                     }
                 });
+                if let Some(effect) = view.effect {
+                    ui.separator();
+                    ui.label(egui::RichText::new(format!("{} parameters", effect.id())).color(Tokens::DARK.text_dim));
+                    for param in effect.params() {
+                        let mut value = param.value;
+                        let changed = if param.integer {
+                            let mut whole = param.value.round() as i32;
+                            let changed = ui
+                                .horizontal(|ui| {
+                                    ui.label(param.label);
+                                    ui.add(egui::DragValue::new(&mut whole).range(param.min as i32..=param.max as i32).speed(1.0)).changed()
+                                })
+                                .inner;
+                            value = whole as f32;
+                            changed
+                        } else {
+                            ui.add(egui::Slider::new(&mut value, param.min..=param.max).text(param.label)).changed()
+                        };
+                        if changed {
+                            push_effect_param(&mut actions, index, param.key, value);
+                        }
+                    }
+                }
             }
         });
 
