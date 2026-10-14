@@ -10,7 +10,7 @@ workflow.
 - **Agent-drivable** — every action is a command; a JSON control channel and an MCP server drive the
   running app.
 
-  <img width="2880" height="1556" alt="m12_render2" src="https://github.com/user-attachments/assets/2e83db2e-522e-4b59-a6eb-de25d6359fd4" />
+  <img width="2872" height="1608" alt="image" src="https://github.com/user-attachments/assets/f6c44b81-cec5-451a-bc83-68332bd6d1fc" />
 
 ## Features
 
