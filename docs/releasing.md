@@ -5,6 +5,14 @@ Signing and per-platform packaging follow the shared Craft release playbook
 is not implemented yet** — M12 delivered the performance harness and scorecard, and left release
 packaging deferred (see `docs/gaps.md`). This document records what exists and the target shape.
 
+The release pipeline itself is already wired: `.github/workflows/release.yml` calls the shared
+[storytold/craft-common-actions](https://github.com/storytold/craft-common-actions) reusable
+`release.yml` (`app-name: substancecraft`, `app-title: SubstanceCraft`, `craft-fonts-ref` pinned). It
+is **dormant** until the `packaging/` scripts land: the shared pipeline reads the version from
+`packaging/env.sh` and runs `packaging/<platform>/package.sh`, so those are the remaining pieces.
+FreeBSD nightly testing uses the shared `freebsd.yml`; CI uses the shared
+`checkout-craft-fonts` composite action.
+
 ## Versioning
 
 The version lives in `[workspace.package] version` in the root `Cargo.toml`. `README.md`, `ROADMAP.md`

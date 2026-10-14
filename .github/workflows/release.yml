@@ -1,0 +1,49 @@
+# Multi-platform release, driven by the shared Craft release pipeline (macOS universal + DMG,
+# Windows MSI, Linux AppImage/deb/rpm, Flatpak, FreeBSD, WebAssembly, riscv64, draft release).
+#
+# Dormant until the packaging scripts land (see docs/releasing.md): the workflow reads the version
+# from packaging/env.sh and runs the packaging/ scripts per platform, which are still to be added
+# (release packaging is deferred from M12). It runs only on the `release` branch or a manual
+# dispatch, so it never affects normal CI. Tracked at @main on purpose, like the other Craft apps.
+name: Release
+
+on:
+  push:
+    branches: [release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version override for a test run, e.g. 0.2.0-rc.1 (empty: Cargo.toml)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: storytold/craft-common-actions/.github/workflows/release.yml@main
+    with:
+      app-name: substancecraft
+      app-title: SubstanceCraft
+      craft-fonts-ref: 3d9ab3a132ed0eff457e424226a435a901da30d3
+      version: ${{ inputs.version }}
+    secrets:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+      AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+      AZURE_CERT_PROFILE: ${{ secrets.AZURE_CERT_PROFILE }}

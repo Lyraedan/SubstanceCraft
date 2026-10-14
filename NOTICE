@@ -13,6 +13,17 @@ Linked libraries (not bundled):
   666c358065261a2816b376fa3bb10538dbf53040. Copyright (c) 2026 ArtCraft Team and the craft-libs
   contributors. Licensed MIT OR Apache-2.0. Used as the shared Craft UI/settings/atomic/quit layer.
 
+Optional build input (not linked by default):
+- craft-fonts, https://github.com/storytold/craft-fonts. A build made with `CRAFT_FONTS_DIR` set to a
+  craft-fonts checkout embeds the fonts listed in that repository's ATTRIBUTION.md and uses them as
+  fallback faces. Those fonts are licensed under the SIL Open Font License 1.1 (OFL-1.1); each keeps
+  its own licence text next to it in craft-fonts. Without the build option nothing is embedded and
+  this product bundles no craft-fonts material.
+
+Continuous integration and releases:
+- craft-common-actions, https://github.com/storytold/craft-common-actions. Reusable GitHub Actions
+  workflows and composite actions (MIT OR Apache-2.0). Used by CI only; not bundled in the product.
+
 Everything else in this repository is original to SubstanceCraft. No Adobe Substance 3D Painter
 code, shaders, profiles, icons or assets are used; SubstanceCraft is a clean-room reimplementation
 built from public specifications and observation.

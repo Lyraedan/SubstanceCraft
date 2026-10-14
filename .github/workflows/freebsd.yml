@@ -1,0 +1,30 @@
+# Builds and tests the workspace on FreeBSD, inside a FreeBSD VM on a Linux runner (GitHub has no
+# FreeBSD runners). It uses the shared Craft reusable workflow so every Crafting App runs the same
+# FreeBSD job. GPU tests skip themselves when the VM has no adapter.
+#
+# Tracked at @main on purpose: org-wide CI fixes propagate without PR churn.
+name: FreeBSD
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  pull_request:
+    paths:
+      - .github/workflows/freebsd.yml
+      - Cargo.toml
+      - Cargo.lock
+      - "**/Cargo.toml"
+  workflow_dispatch:
+
+concurrency:
+  group: freebsd-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  freebsd:
+    uses: storytold/craft-common-actions/.github/workflows/freebsd.yml@main
+    with:
+      craft-fonts-ref: 3d9ab3a132ed0eff457e424226a435a901da30d3

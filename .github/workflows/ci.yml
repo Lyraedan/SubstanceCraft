@@ -1,0 +1,75 @@
+# Builds and tests the workspace on Linux, macOS and Windows, then once more on Linux with the
+# optional craft-fonts input so the Japanese-font code paths and tests run too.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+  # Keep line tables (file:line in panic backtraces) but drop the rest of the debug info.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+# A newer push to a PR branch cancels its older run. Runs on main are never cancelled, so every
+# main state that gets a run is checked to the end.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      # egui/winit/rfd/wgpu link against these on Linux. GPU tests skip themselves when the
+      # runner has no adapter.
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev libgtk-3-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
+
+      # The project's own gate: layers, fmt, clippy (-D warnings) and the test suite.
+      - name: Gate
+        run: cargo xtask ci
+
+      # Build and test once more with the optional craft-fonts input (crates/ui/build.rs), so the
+      # Japanese-font tests that skip without it run here. `CRAFT_FONTS_REQUIRED` makes a broken
+      # checkout a hard error. Linux only; the checkout action is the shared craft composite action.
+      - name: Check out craft-fonts
+        if: runner.os == 'Linux'
+        uses: storytold/craft-common-actions/actions/checkout-craft-fonts@main
+        with:
+          ref: 3d9ab3a132ed0eff457e424226a435a901da30d3
+
+      - name: Test with craft-fonts
+        if: runner.os == 'Linux'
+        env:
+          CRAFT_FONTS_DIR: ${{ github.workspace }}/craft-fonts
+          CRAFT_FONTS_REQUIRED: "1"
+        run: cargo test --workspace

@@ -12,7 +12,11 @@ Never copy Adobe code, shaders, profiles, icons or other assets.
 
 Shared standards live in [craftrules](https://github.com/storytold/craftrules) (`../craftrules` on a
 dev machine); shared Rust components live in [storytold/craft-libs](https://github.com/storytold/craft-libs)
-and are pinned by immutable git revision in the root `Cargo.toml`.
+and are pinned by immutable git revision in the root `Cargo.toml`. Shared non-Latin fonts come from
+[storytold/craft-fonts](https://github.com/storytold/craft-fonts) as an optional `CRAFT_FONTS_DIR`
+build input (`crates/ui/build.rs`), and shared CI/release lives in
+[storytold/craft-common-actions](https://github.com/storytold/craft-common-actions) (called from
+`.github/workflows/`).
 
 ## 1. Orientation (5 minutes)
 

@@ -8,6 +8,7 @@
 
 pub mod app;
 pub mod dock;
+pub mod fonts;
 pub mod icons;
 pub mod menu;
 pub mod panels;

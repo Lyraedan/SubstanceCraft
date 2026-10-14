@@ -177,3 +177,14 @@ section with the Scale slider.
 - `assets/icon.png` is decoded at startup (`substancecraft-codecs::decode_rgba8_bytes`, new) and set
   as the eframe window icon (`with_icon`). A decode failure warns and falls back to the default, never
   panics. No new asset licence (original icon).
+
+## 2026-10-14 — Optional craft-fonts fallback fonts
+
+- `crates/ui/build.rs` + `crates/ui/src/fonts.rs`: when built with `CRAFT_FONTS_DIR` pointing at a
+  `storytold/craft-fonts` checkout, the Japanese fonts are embedded and registered as egui
+  Proportional/Monospace fallbacks (`fonts::install`, called from `StudioApp::new`); without the
+  build input `CRAFT_FONTS` is empty and `install` is a no-op. Fully optional — no Cargo dependency.
+- New UI tests skip cleanly when the fonts are absent and exercise a rendered frame when present.
+
+Verified: `cargo test -p substancecraft-ui` and clippy green with and without
+`CRAFT_FONTS_DIR` set (using a local craft-fonts checkout).

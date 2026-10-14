@@ -66,6 +66,7 @@ impl StudioApp {
     /// Build the app for eframe, installing the theme and app menu.
     pub fn new(cc: &eframe::CreationContext<'_>, registry: Arc<CommandRegistry>, session: SharedSession) -> Self {
         crate::icons::install_loaders(&cc.egui_ctx);
+        crate::fonts::install(&cc.egui_ctx);
 
         if let Err(err) = craft_quit::install_app_menu(&cc.egui_ctx, "SubstanceCraft") {
             eprintln!("warning: could not install the macOS application menu: {err}");

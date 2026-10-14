@@ -68,6 +68,23 @@ cargo xtask build     # cargo build --release, then copy the apps into Build/
 `Build/` is gitignored and holds only the finished applications. Signed per-platform packages are not
 produced yet (see `docs/releasing.md`).
 
+## Shared Craft libraries and build inputs
+
+SubstanceCraft shares code and assets with the other Crafting Apps:
+
+- **craft-libs** (`../craft-libs`) — `craft-ui`, `craft-settings`, `craft-atomic`, `craft-quit`, pinned
+  by immutable git revision in the root `Cargo.toml`.
+- **craft-fonts** — the shared non-Latin fonts. **Fully optional**: the app never lists it in
+  `Cargo.toml`. To embed the fonts (`crates/ui/build.rs`), point `CRAFT_FONTS_DIR` at a checkout:
+  ```sh
+  git clone https://github.com/storytold/craft-fonts ../craft-fonts
+  CRAFT_FONTS_DIR=$PWD/../craft-fonts cargo test -p substancecraft-ui
+  ```
+  Use an **absolute** path. Unset, the app builds and runs unchanged; `CRAFT_FONTS_REQUIRED=1` turns
+  a broken checkout into a build error (release CI sets it). See craft-fonts' `docs/integration.md`.
+- **craft-common-actions** — the shared reusable GitHub Actions workflows that `.github/workflows/`
+  (CI, FreeBSD, Release) call. Tracked at `@main` so org-wide CI fixes propagate.
+
 ## Faster loops
 
 - Check a single crate: `cargo check -p substancecraft-<crate>`.

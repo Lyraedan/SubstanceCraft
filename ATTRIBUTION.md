@@ -9,6 +9,13 @@ Assets must be permissively licensed and keep their license file next to them.
 |---|---|---|---|---|
 | craft-libs (craft-ui, craft-settings, craft-atomic, craft-quit) | git pinned rev `666c358065261a2816b376fa3bb10538dbf53040` | ArtCraft Team and craft-libs contributors | https://github.com/storytold/craft-libs | MIT OR Apache-2.0 |
 
+## Build inputs
+
+| Component | How it is used | Author | Source | License |
+|---|---|---|---|---|
+| craft-fonts | Optional: when `CRAFT_FONTS_DIR` names a checkout, the UI crate's `build.rs` embeds the fonts and registers them as egui fallbacks. Not a Cargo dependency. | Google / Morisawa (see craft-fonts) | https://github.com/storytold/craft-fonts | OFL-1.1 per font (see craft-fonts `ATTRIBUTION.md`) |
+| craft-common-actions | Reusable CI/release workflows and composite actions (`.github/workflows/*.yml`). CI only; not bundled. | ArtCraft Team | https://github.com/storytold/craft-common-actions | MIT OR Apache-2.0 |
+
 ## Test assets
 
 Pinned, permissively licensed models and HDRIs are fetched into `corpus/` (gitignored) by
