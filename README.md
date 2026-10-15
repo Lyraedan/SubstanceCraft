@@ -14,21 +14,32 @@ workflow.
 
 ## Features
 
-- **Viewport** — glTF/OBJ import, orbit/pan/dolly/focus camera (perspective + orthographic), metal/
-  rough PBR with HDRI image-based lighting (`.hdr`/`.exr`), tone mapping, display modes, ground grid,
-  wireframe, and post-effects (bloom, vignette).
+- **Viewport** — glTF/GLB, OBJ, STL, PLY, Collada (DAE) and binary FBX import, orbit/pan/dolly/focus camera (perspective + orthographic), metal/
+  rough PBR with HDRI image-based lighting (`.hdr`/`.exr`), tone mapping, display modes (base colour,
+  normal, roughness, metalness, AO, height, matcap, UV checker, wireframe), a 2D UV view with UV
+  wireframe, ground grid, and post-effects (bloom, vignette).
 - **Texture sets** — the mesh is split by material id; per-set resolution, OpenPBR channel set,
   UDIM/UV-tile detection and solo isolation.
-- **Layer stack** — non-destructive fill/paint/effect/group layers with masks, opacity, 8 blend modes
-  and undo/redo; a CPU compositor oracle and a GPU compositor.
-- **Painting** — brush, eraser, smudge, clone and UV-island polyfill with screen-space sizing,
-  pressure, symmetry and jitter; projection painting through BVH raycasts.
+- **Layer stack** — non-destructive fill/paint/effect/group layers with uniform, image, procedural
+  and baked mesh-map fills (UV, planar or tri-planar projection, tiling, offset/rotation and
+  per-channel strength); constant or effect-stack masks (generator, filter, baked mesh map,
+  projected image); opacity plus per-channel opacity, 26 blend modes, per-layer connected-part
+  restriction and undo/redo; a CPU compositor oracle and a GPU compositor.
+- **Parts** — connected-piece restriction per layer, UV-island/material catalogues, pick a piece
+  (`scene.pick_part`), fill it or mask a layer to it, and isolate (`I`) / hide (`H`) / show all
+  (`Esc`) pieces in the viewport.
+- **Painting** — brush, eraser, smudge, clone and UV-island polyfill with alpha tips, lazy mouse,
+  straight-line (Shift) strokes, an eyedropper (`P`), saved presets, screen-space sizing, pressure,
+  symmetry and jitter; projection painting through BVH raycasts.
 - **Procedural content** — Perlin/Simplex/Voronoi/white generators and levels/blur/invert/contrast/
-  brightness filters as effect layers, with a shelf.
+  brightness filters as effect layers, plus a shelf of material presets, smart materials and smart
+  masks (built-in and user-saved) with search and category filters.
 - **Baking** — BVH-accelerated bakers (position, world/tangent normal, AO, thickness, curvature,
   material ID) with high-poly import.
 - **Export** — per-channel PNG 8/16-bit, TGA and EXR with presets (OpenPBR/glTF/Unreal/Unity/Spec-
-  Gloss), channel packing, naming templates and UDIM naming.
+  Gloss), channel packing, naming templates, UDIM naming, height baked into normals and DirectX
+  normal output; import a whole texture set as one material (name matching, gloss→roughness,
+  DirectX→OpenGL).
 - **Projects** — a crash-safe, versioned `.sccraft` format with save/open/as-new, autosave and recovery.
 - **Automation** — 93 commands, a JSON control channel, a Model Context Protocol server, and a
   headless CLI with a script runner.

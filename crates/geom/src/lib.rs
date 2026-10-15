@@ -12,12 +12,14 @@ pub mod mesh;
 pub mod primitives;
 pub mod raycast;
 pub mod tangents;
+pub mod topology;
 
 pub use bounds::Bounds;
 pub use bvh::Bvh;
 pub use glam;
 pub use mesh::{Mesh, Submesh};
 pub use raycast::{Hit, Ray, raycast};
+pub use topology::{filter_parts, material_parts, mesh_parts, uv_islands};
 
 use thiserror::Error;
 

@@ -50,6 +50,22 @@ pub enum ViewportAction {
     },
     /// End the current paint stroke.
     StrokeEnd,
+    /// Stamp a straight line from the previous stroke point to UV (Shift-click).
+    StrokeLine {
+        /// U coordinate.
+        u: f32,
+        /// V coordinate.
+        v: f32,
+        /// Texture texels per screen pixel.
+        scale: f32,
+    },
+    /// Sample the colour under the pointer (eyedropper).
+    Eyedropper {
+        /// U coordinate.
+        u: f32,
+        /// V coordinate.
+        v: f32,
+    },
     /// Fill the UV island containing a triangle.
     Polyfill {
         /// The hit triangle index.
@@ -59,6 +75,28 @@ pub enum ViewportAction {
     SelectTextureSet {
         /// The texture set index.
         index: usize,
+    },
+    /// Isolate a connected part in the viewport.
+    IsolatePart {
+        /// The part id.
+        part: u32,
+    },
+    /// Hide a connected part in the viewport.
+    HidePart {
+        /// The part id.
+        part: u32,
+    },
+    /// Show every connected part again.
+    ShowAllParts,
+    /// Add a fill layer restricted to a connected part.
+    FillPart {
+        /// The part id.
+        part: u32,
+    },
+    /// Restrict the active layer to a connected part.
+    MaskLayerToPart {
+        /// The part id.
+        part: u32,
     },
 }
 
@@ -78,9 +116,10 @@ pub struct Viewport {
     texture_id: Option<egui::TextureId>,
     uploaded_size: (u32, u32),
     uploaded_scene_revision: u64,
+    uploaded_display_revision: u64,
     uploaded_environment_revision: u64,
     applied_selection: Option<(u64, bool)>,
-    applied_base_revision: Option<u64>,
+    applied_base_revision: Option<(u64, &'static str)>,
     last_signature: Option<u64>,
     painting: bool,
 }
@@ -212,6 +251,9 @@ impl Viewport {
                         }
                         let begin = !self.painting;
                         self.painting = true;
+                        if begin && ui.input(|input| input.modifiers.shift) {
+                            return Some(ViewportAction::StrokeLine { u: hit.uv.x, v: hit.uv.y, scale });
+                        }
                         return Some(if begin {
                             ViewportAction::StrokeBegin { u: hit.uv.x, v: hit.uv.y, scale }
                         } else {
@@ -238,6 +280,32 @@ impl Viewport {
         if response.hovered() && scroll.abs() > 0.0 {
             session.camera_mut().dolly(scroll * 0.0015);
         }
+
+        // Parts: I isolates and H hides the piece under the pointer; Esc restores all parts.
+        if response.hovered() {
+            let pointer = ui.input(|input| input.pointer.hover_pos());
+            let part = pointer.and_then(|position| session.pick_part(position.x - rect.left(), position.y - rect.top(), rect.width(), rect.height()));
+            if let Some(part) = part {
+                if ui.input(|input| input.key_pressed(egui::Key::I)) {
+                    return Some(ViewportAction::IsolatePart { part });
+                }
+                if ui.input(|input| input.key_pressed(egui::Key::H)) {
+                    return Some(ViewportAction::HidePart { part });
+                }
+            }
+            if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+                return Some(ViewportAction::ShowAllParts);
+            }
+        }
+
+        // Eyedropper: P samples the colour under the pointer.
+        if response.hovered()
+            && ui.input(|input| input.key_pressed(egui::Key::P))
+            && let Some(position) = ui.input(|input| input.pointer.hover_pos())
+            && let Some((hit, _)) = pick_hit(&session, position, rect, aspect)
+        {
+            return Some(ViewportAction::Eyedropper { u: hit.uv.x, v: hit.uv.y });
+        }
         None
     }
 
@@ -245,8 +313,9 @@ impl Viewport {
     fn upload_if_changed(&mut self, device: &eframe::wgpu::Device, queue: &eframe::wgpu::Queue, session: &SharedSession) {
         let guard = lock(session);
         let scene_revision = guard.scene_revision();
+        let display_revision = guard.display_revision();
         let environment_revision = guard.environment_revision();
-        let scene_dirty = scene_revision != self.uploaded_scene_revision;
+        let scene_dirty = scene_revision != self.uploaded_scene_revision || display_revision != self.uploaded_display_revision;
         let environment_dirty = environment_revision != self.uploaded_environment_revision;
         if !scene_dirty && !environment_dirty {
             return;
@@ -254,8 +323,11 @@ impl Viewport {
 
         let Some(renderer) = self.renderer.as_mut() else { return };
         if scene_dirty {
-            renderer.set_scene(device, queue, guard.scene());
+            let scene = guard.scene();
+            let display = substancecraft_doc::Scene { mesh: guard.display_mesh(), materials: scene.materials.clone() };
+            renderer.set_scene(device, queue, &display);
             self.uploaded_scene_revision = scene_revision;
+            self.uploaded_display_revision = display_revision;
         }
         if environment_dirty {
             match guard.environment() {
@@ -268,8 +340,12 @@ impl Viewport {
 
     /// Apply texture-set selection (solo) and the composited base-colour texture.
     fn apply_state(&mut self, device: &eframe::wgpu::Device, queue: &eframe::wgpu::Queue, session: &SharedSession) {
-        let revision = lock(session).texture_set_revision();
-        let isolate = lock(session).settings().isolate_active_set;
+        let (revision, isolate, display) = {
+            let guard = lock(session);
+            let settings = guard.settings();
+            (guard.texture_set_revision(), settings.isolate_active_set, settings.display)
+        };
+        let display_id = display.id();
 
         if self.applied_selection != Some((revision, isolate)) {
             let materials = {
@@ -282,13 +358,33 @@ impl Viewport {
             self.applied_selection = Some((revision, isolate));
         }
 
-        if self.applied_base_revision != Some(revision) {
+        if self.applied_base_revision != Some((revision, display_id)) {
+            let channel = match display_id {
+                "ambient_occlusion" => substancecraft_doc::Channel::AmbientOcclusion,
+                "height" => substancecraft_doc::Channel::Height,
+                _ => substancecraft_doc::Channel::BaseColor,
+            };
             let composite = {
                 let guard = lock(session);
                 guard.project().active_set().cloned().map(|set| {
+                    let surface = if substancecraft_compose::stack_needs_surface(&set.layers) {
+                        guard.eval_surface(COMPOSITE_RESOLUTION, COMPOSITE_RESOLUTION)
+                    } else {
+                        None
+                    };
+                    let mesh_maps = guard.eval_mesh_maps();
+                    let context = substancecraft_compose::EvalContext { surface: surface.as_ref(), mesh_maps: &mesh_maps };
                     let material =
                         set.materials.first().and_then(|id| guard.project().scene.materials.get(*id as usize)).cloned().unwrap_or_default();
-                    let image = substancecraft_compose::evaluate_base_color(&set, &material, COMPOSITE_RESOLUTION, COMPOSITE_RESOLUTION);
+                    let base = substancecraft_compose::default_channel_base(channel, &material);
+                    let image = substancecraft_compose::evaluate_channel_ctx(
+                        &set.layers,
+                        channel,
+                        base,
+                        COMPOSITE_RESOLUTION,
+                        COMPOSITE_RESOLUTION,
+                        &context,
+                    );
                     let params = set.shader_params;
                     (image, set.materials.clone(), params.base_color_tint, params.metallic, params.roughness)
                 })
@@ -299,7 +395,7 @@ impl Viewport {
                 renderer.set_base_color_texture(device, queue, &image, &materials);
                 renderer.set_material_override(queue, Some((materials, tint, metallic, roughness)));
             }
-            self.applied_base_revision = Some(revision);
+            self.applied_base_revision = Some((revision, display_id));
         }
     }
 }

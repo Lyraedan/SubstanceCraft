@@ -6,23 +6,29 @@ _Last reviewed: 2026-10-15 (M12 complete)._
 
 ## Workflow & UX depth (newly identified)
 
-15. **Layer blending and fills are shallow.** Only 8 blend modes (Painter has ~32); masks are
-    constant coverage only (no painted, image or geometry masks); fill layers are constant-only —
-    no image or mesh-map source, no UV/tri-planar/planar projection, no tiling X/Y and no
-    per-channel strength.
-16. **No parts workflow.** Cannot select a connected piece, UV island, imported object or material
-    ID and fill it, paint only there, mask a layer or add a generator; no isolate (`I`) / hide (`H`)
-    or right-click context menu on the model.
-17. **Painting lacks depth.** No brush alpha tips, lazy mouse, straight-line (Shift) strokes,
-    stencils, triangle/element polyfill modes, mask eraser, eyedropper or saved brush presets.
-18. **No content library.** No material presets, smart materials, smart masks, HDRI/environment
-    library, textures shelf, shelf search/filter, drag-and-drop or on-disk user library.
-19. **Import/export interop gaps.** No FBX import; no "import a texture set as one material" (name
-    matching, gloss→roughness, DirectX→OpenGL normal); no UV padding, height-into-normal export or
-    DirectX-normal templates.
-20. **Views and onboarding.** No 2D UV view of channels/baked maps, no AO/height/matcap display
-    modes, height is not shown as bumps and AO does not occlude ambient; no welcome/quick-start/
-    recent-files, preferences dialog, keyboard-shortcuts dialog or history click-to-jump panel.
+15. **Layer masks lack painted/geometry support.** Blending (26 modes + per-channel opacity), fill
+    sources (uniform / image / procedural / baked mesh map with UV / planar / tri-planar projection,
+    tiling and per-channel strength) and mask-effect stacks (fill, generator, filter, mesh map,
+    image) are in; masks are not yet paint-brushable and there are no geometry/part masks.
+16. **Parts workflow is mostly in.** Connected-piece restriction, UV-island/material catalogues
+    (`scene.parts {mode}`), picking (`scene.pick_part`), viewport isolate/hide (`I` / `H` / `Esc`)
+    and part fill/mask commands (`layer.add_part_fill`, `layer.mask_to_part`) are in; still missing
+    imported-object catalogues, a hover highlight and a right-click context menu (keyboard only today).
+17. **Painting is deeper now.** Brush alpha tips, lazy mouse, straight-line (Shift) strokes, an
+    eyedropper and saved brush presets are in; still missing stencils, triangle/element polyfill
+    modes, a mask eraser and native pen pressure/tilt.
+18. **Content library is partial.** Material presets, smart materials and smart masks are in
+    (built-in plus in-session user-saved, with shelf tiles and search/filter); still missing a
+    built-in HDRI/environment library, a textures shelf, drag-and-drop and on-disk persistence of
+    the user library.
+19. **Import/export interop.** Model import (OBJ/glTF/STL/PLY/FBX/Collada), texture-set import (name
+    matching, gloss→roughness, DirectX→OpenGL normal), height-into-normal baking and DirectX-normal
+    export are in; still missing UV padding, per-channel sRGB assignment, batch export across texture
+    sets, saved export presets and USD/OpenPBR material export.
+20. **Views are in; onboarding is not.** A 2D UV view (with UV wireframe), AO/height/matcap display
+    modes, a keyboard-shortcuts dialog and a history panel with multi-step jump are in; still missing
+    a welcome/quick-start screen, recent files, a preferences dialog, height-as-bumps and AO
+    occluding ambient.
 21. **Web build.** A wasm/WebGPU web build is a candidate target alongside the native app.
 
 ## Release (deferred)

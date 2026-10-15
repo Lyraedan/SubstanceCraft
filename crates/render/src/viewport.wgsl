@@ -151,6 +151,17 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
         let parity = (grid.x + grid.y) - 2.0 * floor((grid.x + grid.y) * 0.5);
         return vec4<f32>(mix(vec3<f32>(0.12), vec3<f32>(0.82), parity), 1.0);
     }
+    if (display_mode == 6 || display_mode == 7) {
+        // Ambient occlusion / height: the uploaded display texture as greyscale.
+        return vec4<f32>(vec3<f32>(albedo.r), 1.0);
+    }
+    if (display_mode == 8) {
+        // A neutral matcap shaded from the normal.
+        let mc = normalize(in.normal);
+        let base = clamp(mc * 0.5 + vec3<f32>(0.5), vec3<f32>(0.0), vec3<f32>(1.0));
+        let shade = 0.15 + 0.85 * clamp(dot(mc, normalize(vec3<f32>(-0.4, 0.6, 0.7))), 0.0, 1.0);
+        return vec4<f32>(base * shade + vec3<f32>(0.05), 1.0);
+    }
 
     let n = normalize(in.normal);
     let v = normalize(camera.camera_pos.xyz - in.world_position);

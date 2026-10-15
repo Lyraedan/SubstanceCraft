@@ -18,6 +18,12 @@ pub enum DisplayMode {
     UvChecker,
     /// Triangle edges only.
     Wireframe,
+    /// The ambient-occlusion channel.
+    AmbientOcclusion,
+    /// The height channel (as greyscale).
+    Height,
+    /// A neutral matcap shaded from the normal.
+    Matcap,
 }
 
 impl DisplayMode {
@@ -30,6 +36,9 @@ impl DisplayMode {
             DisplayMode::Metalness => 3.0,
             DisplayMode::UvChecker => 4.0,
             DisplayMode::Wireframe => 5.0,
+            DisplayMode::AmbientOcclusion => 6.0,
+            DisplayMode::Height => 7.0,
+            DisplayMode::Matcap => 8.0,
         }
     }
 
@@ -42,6 +51,9 @@ impl DisplayMode {
             DisplayMode::Metalness => "metalness",
             DisplayMode::UvChecker => "uv_checker",
             DisplayMode::Wireframe => "wireframe",
+            DisplayMode::AmbientOcclusion => "ambient_occlusion",
+            DisplayMode::Height => "height",
+            DisplayMode::Matcap => "matcap",
         }
     }
 
@@ -54,8 +66,16 @@ impl DisplayMode {
             "metalness" => DisplayMode::Metalness,
             "uv_checker" => DisplayMode::UvChecker,
             "wireframe" => DisplayMode::Wireframe,
+            "ambient_occlusion" => DisplayMode::AmbientOcclusion,
+            "height" => DisplayMode::Height,
+            "matcap" => DisplayMode::Matcap,
             _ => return None,
         })
+    }
+
+    /// Whether this mode samples the uploaded display texture.
+    pub fn uses_texture(self) -> bool {
+        matches!(self, DisplayMode::BaseColor | DisplayMode::AmbientOcclusion | DisplayMode::Height)
     }
 }
 
@@ -136,6 +156,9 @@ mod tests {
             DisplayMode::Metalness,
             DisplayMode::UvChecker,
             DisplayMode::Wireframe,
+            DisplayMode::AmbientOcclusion,
+            DisplayMode::Height,
+            DisplayMode::Matcap,
         ] {
             assert_eq!(DisplayMode::from_id(mode.id()), Some(mode));
         }

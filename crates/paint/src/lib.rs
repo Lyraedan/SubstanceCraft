@@ -149,6 +149,8 @@ pub struct BrushSettings {
     pub clone_offset: [f32; 2],
     /// Smudge strength in `0..=1`.
     pub smudge: f32,
+    /// Lazy-mouse lag in texture pixels (0 disables smoothing).
+    pub lazy_radius_px: f32,
 }
 
 impl Default for BrushSettings {
@@ -167,6 +169,7 @@ impl Default for BrushSettings {
             symmetry: Symmetry::None,
             clone_offset: [96.0, 0.0],
             smudge: 0.5,
+            lazy_radius_px: 0.0,
         }
     }
 }
@@ -192,6 +195,7 @@ impl BrushSettings {
 pub struct StrokeState {
     last: Option<[f32; 2]>,
     distance_since_dab: f32,
+    lazy: Option<[f32; 2]>,
 }
 
 impl StrokeState {
@@ -203,6 +207,7 @@ impl StrokeState {
     /// Begin a stroke at `center`, stamping the first dab.
     pub fn begin(&mut self, center: [f32; 2], mut stamp: impl FnMut([f32; 2])) {
         self.last = Some(center);
+        self.lazy = Some(center);
         self.distance_since_dab = 0.0;
         stamp(center);
     }
@@ -267,6 +272,31 @@ impl StrokeState {
         let center = self.unwrap(center, size);
         self.dabs(center, step, out);
     }
+
+    /// Like `dabs_wrapped`, but the dab centre lags behind the pointer by up to `lazy_radius`
+    /// pixels (a "lazy mouse" that smooths shaky strokes). `lazy_radius` of 0 disables it.
+    pub fn dabs_wrapped_lazy(&mut self, center: [f32; 2], step: f32, size: [f32; 2], lazy_radius: f32, out: &mut Vec<[f32; 2]>) {
+        let target = self.unwrap(center, size);
+        let point = if lazy_radius > 0.0 {
+            match self.lazy {
+                Some(current) => {
+                    let delta = [target[0] - current[0], target[1] - current[1]];
+                    let distance = (delta[0] * delta[0] + delta[1] * delta[1]).sqrt();
+                    if distance <= lazy_radius {
+                        target
+                    } else {
+                        let t = lazy_radius / distance;
+                        [current[0] + delta[0] * t, current[1] + delta[1] * t]
+                    }
+                }
+                None => target,
+            }
+        } else {
+            target
+        };
+        self.lazy = Some(point);
+        self.dabs(point, step, out);
+    }
 }
 
 /// The falloff at a normalised distance (`0` centre, `1` edge) for a hardness.
@@ -284,7 +314,15 @@ fn falloff(distance: f32, hardness: f32) -> f32 {
 /// Iterate the pixels under a dab, calling `visit(x, y, coverage)`. Coordinates wrap around the
 /// image edges so a dab straddling a UV seam paints both sides seamlessly. The radius is capped at
 /// half the smaller dimension so the wrapped footprint never revisits a pixel twice.
-fn for_each_dab_pixel(target: &RasterImage, center: [f32; 2], radius: f32, hardness: f32, alpha: f32, mut visit: impl FnMut(u32, u32, f32)) {
+fn for_each_dab_pixel(
+    target: &RasterImage,
+    center: [f32; 2],
+    radius: f32,
+    hardness: f32,
+    alpha: f32,
+    tip: Option<&RasterImage>,
+    mut visit: impl FnMut(u32, u32, f32),
+) {
     if target.is_empty() || alpha <= 0.0 {
         return;
     }
@@ -301,7 +339,10 @@ fn for_each_dab_pixel(target: &RasterImage, center: [f32; 2], radius: f32, hardn
         for ix in min_x..=max_x {
             let dx = ix as f32 + 0.5 - center[0];
             let dy = iy as f32 + 0.5 - center[1];
-            let coverage = falloff((dx * dx + dy * dy).sqrt() / radius, hardness) * alpha;
+            let mut coverage = falloff((dx * dx + dy * dy).sqrt() / radius, hardness) * alpha;
+            if let Some(tip) = tip {
+                coverage *= tip_factor(tip, dx, dy, radius);
+            }
             if coverage > 0.0 {
                 visit(ix.rem_euclid(w) as u32, iy.rem_euclid(h) as u32, coverage.clamp(0.0, 1.0));
             }
@@ -309,10 +350,22 @@ fn for_each_dab_pixel(target: &RasterImage, center: [f32; 2], radius: f32, hardn
     }
 }
 
-/// Stamp one anti-aliased brush dab (source-over).
-pub fn paint_stamp(target: &mut RasterImage, center: [f32; 2], radius: f32, hardness: f32, color: [f32; 4], alpha: f32) {
+/// The brush-tip alpha at a dab offset (0 outside the tip). A tip with alpha uses it, otherwise the
+/// tip's brightness is the mask.
+fn tip_factor(tip: &RasterImage, dx: f32, dy: f32, radius: f32) -> f32 {
+    let u = dx / radius * 0.5 + 0.5;
+    let v = dy / radius * 0.5 + 0.5;
+    if !(0.0..=1.0).contains(&u) || !(0.0..=1.0).contains(&v) {
+        return 0.0;
+    }
+    let sample = tip.sample_nearest(u, v);
+    if sample[3] < 1.0 { sample[3].clamp(0.0, 1.0) } else { sample[0].clamp(0.0, 1.0) }
+}
+
+/// Stamp one anti-aliased brush dab (source-over), optionally shaped by an alpha tip.
+pub fn paint_stamp(target: &mut RasterImage, center: [f32; 2], radius: f32, hardness: f32, color: [f32; 4], alpha: f32, tip: Option<&RasterImage>) {
     let mut writes = Vec::new();
-    for_each_dab_pixel(target, center, radius, hardness, alpha, |x, y, coverage| writes.push((x, y, coverage)));
+    for_each_dab_pixel(target, center, radius, hardness, alpha, tip, |x, y, coverage| writes.push((x, y, coverage)));
     for (x, y, coverage) in writes {
         let dst = target.pixel(x, y);
         target.set_pixel(
@@ -329,9 +382,9 @@ pub fn paint_stamp(target: &mut RasterImage, center: [f32; 2], radius: f32, hard
 }
 
 /// Stamp an eraser dab, reducing alpha.
-pub fn erase_stamp(target: &mut RasterImage, center: [f32; 2], radius: f32, hardness: f32, strength: f32) {
+pub fn erase_stamp(target: &mut RasterImage, center: [f32; 2], radius: f32, hardness: f32, strength: f32, tip: Option<&RasterImage>) {
     let mut writes = Vec::new();
-    for_each_dab_pixel(target, center, radius, hardness, strength, |x, y, coverage| writes.push((x, y, coverage)));
+    for_each_dab_pixel(target, center, radius, hardness, strength, tip, |x, y, coverage| writes.push((x, y, coverage)));
     for (x, y, coverage) in writes {
         let mut pixel = target.pixel(x, y);
         pixel[3] *= 1.0 - coverage;
@@ -342,13 +395,23 @@ pub fn erase_stamp(target: &mut RasterImage, center: [f32; 2], radius: f32, hard
 /// Stamp a smudge dab: pull colour from `source` at `pick` toward the target at `center`.
 pub fn smudge_stamp(target: &mut RasterImage, source: &RasterImage, center: [f32; 2], pick: [f32; 2], radius: f32, hardness: f32, strength: f32) {
     let sampled = source.sample_pixel(pick);
-    paint_stamp(target, center, radius, hardness, sampled, strength);
+    paint_stamp(target, center, radius, hardness, sampled, strength, None);
 }
 
 /// Stamp a clone dab: copy `source` at `center + offset` into the target at `center`.
-pub fn clone_stamp(target: &mut RasterImage, source: &RasterImage, center: [f32; 2], radius: f32, hardness: f32, offset: [f32; 2], alpha: f32) {
+#[allow(clippy::too_many_arguments)]
+pub fn clone_stamp(
+    target: &mut RasterImage,
+    source: &RasterImage,
+    center: [f32; 2],
+    radius: f32,
+    hardness: f32,
+    offset: [f32; 2],
+    alpha: f32,
+    tip: Option<&RasterImage>,
+) {
     let sampled = source.sample_pixel([center[0] + offset[0], center[1] + offset[1]]);
-    paint_stamp(target, center, radius, hardness, sampled, alpha);
+    paint_stamp(target, center, radius, hardness, sampled, alpha, tip);
 }
 
 #[cfg(test)]
@@ -373,7 +436,7 @@ mod tests {
     fn a_single_dab_paints_the_centre() {
         let mut target = RasterImage::new(64, 64);
         let mut stroke = StrokeState::new();
-        stroke.begin([32.0, 32.0], |center| paint_stamp(&mut target, center, 8.0, 0.5, [1.0, 0.0, 0.0, 1.0], 1.0));
+        stroke.begin([32.0, 32.0], |center| paint_stamp(&mut target, center, 8.0, 0.5, [1.0, 0.0, 0.0, 1.0], 1.0, None));
         assert!(target.pixel(32, 32)[0] > 0.9);
         assert_eq!(target.pixel(0, 0), [0.0, 0.0, 0.0, 0.0]);
     }
@@ -382,8 +445,8 @@ mod tests {
     fn a_stroke_paints_along_the_path() {
         let mut target = RasterImage::new(128, 64);
         let mut stroke = StrokeState::new();
-        stroke.begin([10.0, 32.0], |c| paint_stamp(&mut target, c, 8.0, 0.5, [1.0, 0.0, 0.0, 1.0], 1.0));
-        stroke.extend([110.0, 32.0], 2.0, |c| paint_stamp(&mut target, c, 8.0, 0.5, [1.0, 0.0, 0.0, 1.0], 1.0));
+        stroke.begin([10.0, 32.0], |c| paint_stamp(&mut target, c, 8.0, 0.5, [1.0, 0.0, 0.0, 1.0], 1.0, None));
+        stroke.extend([110.0, 32.0], 2.0, |c| paint_stamp(&mut target, c, 8.0, 0.5, [1.0, 0.0, 0.0, 1.0], 1.0, None));
         for x in [20u32, 50, 80, 105] {
             assert!(target.pixel(x, 32)[0] > 0.5, "gap at x={x}");
         }
@@ -392,7 +455,7 @@ mod tests {
     #[test]
     fn eraser_reduces_alpha() {
         let mut target = RasterImage::filled(64, 64, [1.0, 0.0, 0.0, 1.0]);
-        erase_stamp(&mut target, [32.0, 32.0], 8.0, 0.5, 1.0);
+        erase_stamp(&mut target, [32.0, 32.0], 8.0, 0.5, 1.0, None);
         assert!(target.pixel(32, 32)[3] < 0.1);
         assert!(target.pixel(0, 0)[3] > 0.9);
     }
@@ -402,7 +465,7 @@ mod tests {
         let mut source = RasterImage::new(64, 64);
         source.set_pixel(10, 10, [0.0, 1.0, 0.0, 1.0]);
         let mut target = RasterImage::new(64, 64);
-        clone_stamp(&mut target, &source, [30.0, 30.0], 8.0, 0.5, [-20.0, -20.0], 1.0);
+        clone_stamp(&mut target, &source, [30.0, 30.0], 8.0, 0.5, [-20.0, -20.0], 1.0, None);
         assert!(target.pixel(30, 30)[1] > 0.5, "clone did not copy the source colour");
     }
 
@@ -420,8 +483,8 @@ mod tests {
         let s = BrushSettings { size_pressure: true, ..settings() };
         let mut big = RasterImage::new(64, 64);
         let mut small = RasterImage::new(64, 64);
-        paint_stamp(&mut big, [32.0, 32.0], s.radius_at(1.0, 0.0), s.hardness, s.color, 1.0);
-        paint_stamp(&mut small, [32.0, 32.0], s.radius_at(0.25, 0.0), s.hardness, s.color, 1.0);
+        paint_stamp(&mut big, [32.0, 32.0], s.radius_at(1.0, 0.0), s.hardness, s.color, 1.0, None);
+        paint_stamp(&mut small, [32.0, 32.0], s.radius_at(0.25, 0.0), s.hardness, s.color, 1.0, None);
         assert!(big.pixel(39, 32)[0] > small.pixel(39, 32)[0]);
     }
 
@@ -455,8 +518,31 @@ mod tests {
     #[test]
     fn a_dab_at_the_edge_wraps_to_the_other_side() {
         let mut target = RasterImage::new(64, 64);
-        paint_stamp(&mut target, [0.5, 32.0], 6.0, 1.0, [1.0, 0.0, 0.0, 1.0], 1.0);
+        paint_stamp(&mut target, [0.5, 32.0], 6.0, 1.0, [1.0, 0.0, 0.0, 1.0], 1.0, None);
         assert!(target.pixel(0, 32)[0] > 0.0, "dab missed the near edge");
         assert!(target.pixel(63, 32)[0] > 0.0, "dab did not wrap across the edge to the far side");
+    }
+
+    #[test]
+    fn alpha_tip_shapes_the_dab() {
+        // A tip that is black on the left and white on the right.
+        let mut tip = RasterImage::filled(2, 2, [1.0, 1.0, 1.0, 1.0]);
+        tip.set_pixel(0, 0, [0.0, 0.0, 0.0, 1.0]);
+        tip.set_pixel(0, 1, [0.0, 0.0, 0.0, 1.0]);
+        let mut target = RasterImage::new(64, 64);
+        paint_stamp(&mut target, [32.0, 32.0], 16.0, 1.0, [1.0, 0.0, 0.0, 1.0], 1.0, Some(&tip));
+        assert!(target.pixel(40, 32)[0] > 0.5, "the white side of the tip should paint");
+        assert!(target.pixel(24, 32)[0] < 0.1, "the black side of the tip should block");
+    }
+
+    #[test]
+    fn lazy_mouse_lags_behind_the_pointer() {
+        let mut stroke = StrokeState::new();
+        let mut out = Vec::new();
+        stroke.dabs_wrapped_lazy([0.0, 0.0], 1.0, [1000.0, 1000.0], 4.0, &mut out);
+        out.clear();
+        stroke.dabs_wrapped_lazy([100.0, 0.0], 1.0, [1000.0, 1000.0], 4.0, &mut out);
+        assert!(!out.is_empty());
+        assert!(out.iter().all(|position| position[0] < 10.0), "lazy mouse should lag: {out:?}");
     }
 }

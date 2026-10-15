@@ -9,7 +9,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use bytemuck::{Pod, Zeroable};
-use substancecraft_doc::{Channel, LayerKind, LayerStack};
+use substancecraft_doc::{Channel, FillSource, LayerKind, LayerStack, Mask};
 use substancecraft_raster::RasterImage;
 use thiserror::Error;
 
@@ -59,6 +59,24 @@ fn blend_code(mode: substancecraft_doc::BlendMode) -> f32 {
         Subtract => 5.0,
         Darken => 6.0,
         Lighten => 7.0,
+        ColorDodge => 8.0,
+        ColorBurn => 9.0,
+        LinearBurn => 10.0,
+        HardLight => 11.0,
+        SoftLight => 12.0,
+        VividLight => 13.0,
+        LinearLight => 14.0,
+        PinLight => 15.0,
+        HardMix => 16.0,
+        Difference => 17.0,
+        Exclusion => 18.0,
+        Divide => 19.0,
+        Hue => 20.0,
+        Saturation => 21.0,
+        Color => 22.0,
+        Luminosity => 23.0,
+        DarkerColor => 24.0,
+        LighterColor => 25.0,
     }
 }
 
@@ -73,12 +91,24 @@ fn plan(stack: &LayerStack, channel: Channel) -> Result<Vec<Params>, GpuError> {
         if !layer.visible {
             continue;
         }
-        let coverage = layer.coverage();
+        if layer.mask.as_ref().is_some_and(Mask::is_dynamic) {
+            return Err(GpuError::Unsupported("mask effect stacks".to_string()));
+        }
+        if layer.parts.is_some() {
+            return Err(GpuError::Unsupported("layer parts".to_string()));
+        }
+        let coverage = layer.coverage_for(channel);
         if coverage <= 0.0 {
             continue;
         }
         match &layer.kind {
-            LayerKind::Fill { color, value } => {
+            LayerKind::Fill { color, value, source, strength, .. } => {
+                if !matches!(source, FillSource::Uniform) {
+                    return Err(GpuError::Unsupported("image/procedural/mesh-map fill sources".to_string()));
+                }
+                if (*strength - 1.0).abs() > 1e-6 {
+                    return Err(GpuError::Unsupported("fill strength".to_string()));
+                }
                 let scalar = channel_is_scalar(channel);
                 let src = if scalar { [*value, *value, *value, 1.0] } else { [color[0], color[1], color[2], 1.0] };
                 passes.push(Params { src, control: [coverage, blend_code(layer.blend), if scalar { 1.0 } else { 0.0 }, 0.0] });
@@ -321,24 +351,77 @@ mod tests {
     use substancecraft_doc::{BlendMode, Channel, Layer, LayerStack, Mask};
 
     fn blend(mode: u32, base: [f32; 3], src: [f32; 3]) -> [f32; 3] {
+        let dodge = |b: f32, s: f32| {
+            if b <= 0.0 {
+                0.0
+            } else if s >= 1.0 {
+                1.0
+            } else {
+                (b / (1.0 - s)).min(1.0)
+            }
+        };
+        let burn = |b: f32, s: f32| {
+            if b >= 1.0 {
+                1.0
+            } else if s <= 0.0 {
+                0.0
+            } else {
+                1.0 - ((1.0 - b) / s).min(1.0)
+            }
+        };
+        let hard = |b: f32, s: f32| if s <= 0.5 { 2.0 * b * s } else { 1.0 - 2.0 * (1.0 - b) * (1.0 - s) };
         let mut out = [0.0f32; 3];
         for i in 0..3 {
             let (b, s) = (base[i], src[i]);
             out[i] = match mode {
                 0 => s,
                 1 => b * s,
-                2 => 1.0 - (1.0 - b) * (1.0 - s),
-                3 => {
-                    if b < 0.5 {
-                        2.0 * b * s
-                    } else {
-                        1.0 - 2.0 * (1.0 - b) * (1.0 - s)
-                    }
-                }
+                2 => b + s - b * s,
+                3 => hard(s, b),
                 4 => b + s,
                 5 => b - s,
                 6 => b.min(s),
-                _ => b.max(s),
+                7 => b.max(s),
+                8 => dodge(b, s),
+                9 => burn(b, s),
+                10 => b + s - 1.0,
+                11 => hard(b, s),
+                12 => {
+                    let d = if b <= 0.25 { ((16.0 * b - 12.0) * b + 4.0) * b } else { b.sqrt() };
+                    if s <= 0.5 { b - (1.0 - 2.0 * s) * b * (1.0 - b) } else { b + (2.0 * s - 1.0) * (d - b) }
+                }
+                13 => {
+                    if s <= 0.5 {
+                        burn(b, 2.0 * s)
+                    } else {
+                        dodge(b, 2.0 * s - 1.0)
+                    }
+                }
+                14 => b + 2.0 * s - 1.0,
+                15 => {
+                    if s <= 0.5 {
+                        b.min(2.0 * s)
+                    } else {
+                        b.max(2.0 * s - 1.0)
+                    }
+                }
+                16 => {
+                    if b + s >= 1.0 {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+                17 => (b - s).abs(),
+                18 => b + s - 2.0 * b * s,
+                19 => {
+                    if s <= 0.0 {
+                        1.0
+                    } else {
+                        b / s
+                    }
+                }
+                _ => s,
             };
         }
         out
@@ -362,7 +445,7 @@ mod tests {
                 let b = [pixel[0], pixel[1], pixel[2]];
                 let blended = blend(code, b, src);
                 for c in 0..3 {
-                    pixel[c] = (b[c] + (blended[c] - b[c]) * layer.coverage()).clamp(0.0, 1.0);
+                    pixel[c] = (b[c] + (blended[c] - b[c]) * layer.coverage_for(Channel::BaseColor)).clamp(0.0, 1.0);
                 }
                 pixel[3] = 1.0;
             }
@@ -395,6 +478,30 @@ mod tests {
         for (gpu_pixel, cpu_pixel) in gpu.pixels.iter().zip(&cpu.pixels) {
             for c in 0..4 {
                 assert!((gpu_pixel[c] - cpu_pixel[c]).abs() < 2e-3, "gpu {gpu_pixel:?} vs cpu {cpu_pixel:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn gpu_matches_cpu_for_expanded_blend_modes() {
+        let Ok((device, queue)) = headless_device() else {
+            return;
+        };
+
+        for mode in [BlendMode::ColorDodge, BlendMode::ColorBurn, BlendMode::Difference, BlendMode::SoftLight, BlendMode::Divide] {
+            let mut stack = LayerStack::new();
+            let mut layer = Layer::fill("fill", [0.6, 0.35, 0.8, 1.0], 0.0);
+            layer.blend = mode;
+            stack.push(layer);
+
+            let base = [0.2, 0.7, 0.4, 1.0];
+            let (width, height) = (8, 8);
+            let gpu = composite_channel(&device, &queue, &stack, Channel::BaseColor, base, width, height).expect("gpu");
+            let cpu = cpu_reference(&stack, base, width, height);
+            for (gpu_pixel, cpu_pixel) in gpu.pixels.iter().zip(&cpu.pixels) {
+                for c in 0..4 {
+                    assert!((gpu_pixel[c] - cpu_pixel[c]).abs() < 2e-3, "{mode:?}: gpu {gpu_pixel:?} vs cpu {cpu_pixel:?}");
+                }
             }
         }
     }

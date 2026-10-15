@@ -5,7 +5,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use substancecraft_bake::{BakeMap, BakeSettings, Baker};
 use substancecraft_codecs::ImageF32;
-use substancecraft_doc::{BlendMode, Channel, Effect, Layer, LayerKind, LayerStack, Mask, Project, Scene, Shader, ShaderParams, TextureSet, UvTile};
+use substancecraft_doc::{
+    BlendMode, Channel, Effect, FillSource, Layer, LayerKind, LayerStack, Mask, MaskEffect, Project, Projection, Scene, Shader, ShaderParams,
+    TextureSet, UvTile,
+};
 use substancecraft_paint::{BrushSettings, StrokeState, ToolKind, clone_stamp, erase_stamp, paint_stamp, smudge_stamp};
 use substancecraft_raster::RasterImage;
 use substancecraft_render::{OrbitCamera, RenderSettings};
@@ -64,6 +67,16 @@ pub struct Session {
     redo_stack: Vec<Vec<TextureSet>>,
     /// The brush parameters.
     brush: BrushSettings,
+    /// The active brush alpha tip, if any.
+    brush_alpha: Option<RasterImage>,
+    /// The last stamped stroke UV, for straight-line strokes.
+    last_stroke_uv: Option<[f32; 2]>,
+    /// Saved brush presets (name, settings).
+    brush_presets: Vec<(String, BrushSettings)>,
+    /// User-saved smart materials (name, layer subtree).
+    user_smart_materials: Vec<(String, Vec<Layer>)>,
+    /// User-saved smart masks (name, mask-effect stack).
+    user_smart_masks: Vec<(String, Vec<MaskEffect>)>,
     /// The in-progress stroke, if the pointer is down.
     stroke: Option<StrokeState>,
     /// The texel-per-screen-pixel scale for the current stroke (0 = texture-space sizing).
@@ -86,6 +99,14 @@ pub struct Session {
     bake_log: Vec<String>,
     /// Bumped when baked maps change.
     bake_revision: u64,
+    /// Connected-part ids per vertex, cached for the current scene.
+    parts: Vec<u32>,
+    /// Parts hidden in the viewport.
+    hidden_parts: Vec<u32>,
+    /// When set, only this connected part is shown in the viewport.
+    isolate_part: Option<u32>,
+    /// Bumped when part visibility changes, so the viewport re-uploads the display mesh.
+    display_revision: u64,
     /// The path the project was last saved to or opened from.
     file_path: Option<PathBuf>,
     /// Whether there are unsaved document changes.
@@ -118,6 +139,11 @@ impl Session {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             brush: BrushSettings::default(),
+            brush_alpha: None,
+            last_stroke_uv: None,
+            brush_presets: Vec::new(),
+            user_smart_materials: Vec::new(),
+            user_smart_masks: Vec::new(),
             stroke: None,
             stroke_scale: 0.0,
             stroke_source: None,
@@ -129,6 +155,10 @@ impl Session {
             baked: Vec::new(),
             bake_log: Vec::new(),
             bake_revision: 1,
+            parts: Vec::new(),
+            hidden_parts: Vec::new(),
+            isolate_part: None,
+            display_revision: 1,
             file_path: None,
             dirty: false,
             workspace: Workspace::default(),
@@ -173,6 +203,7 @@ impl Session {
     /// Replace the scene, rebuilding the texture sets, and bump the revisions.
     pub fn set_scene(&mut self, scene: Scene) {
         self.project.scene = scene;
+        self.parts = substancecraft_geom::mesh_parts(&self.project.scene.mesh);
         self.project.rebuild_texture_sets();
         self.scene_revision = self.scene_revision.saturating_add(1);
         self.bump_texture_sets();
@@ -361,6 +392,34 @@ impl Session {
         !self.redo_stack.is_empty()
     }
 
+    /// The number of undo steps available.
+    pub fn undo_depth(&self) -> usize {
+        self.undo_stack.len()
+    }
+
+    /// The number of redo steps available.
+    pub fn redo_depth(&self) -> usize {
+        self.redo_stack.len()
+    }
+
+    /// Undo `count` steps (clamped), returning how many were applied.
+    pub fn undo_steps(&mut self, count: usize) -> usize {
+        let mut applied = 0;
+        while applied < count && self.undo() {
+            applied += 1;
+        }
+        applied
+    }
+
+    /// Redo `count` steps (clamped), returning how many were applied.
+    pub fn redo_steps(&mut self, count: usize) -> usize {
+        let mut applied = 0;
+        while applied < count && self.redo() {
+            applied += 1;
+        }
+        applied
+    }
+
     /// Undo the last texture-set change.
     pub fn undo(&mut self) -> bool {
         let Some(sets) = self.undo_stack.pop() else { return false };
@@ -394,6 +453,138 @@ impl Session {
             set.layers.push(layer);
         }
         self.bump_texture_sets();
+    }
+
+    /// Import matched texture maps as one channel-scoped fill layer each (one undo step).
+    pub fn import_texture_channels(&mut self, channels: Vec<(Channel, RasterImage)>) -> usize {
+        if channels.is_empty() {
+            return 0;
+        }
+        self.push_undo();
+        let mut count = 0;
+        if let Some(set) = self.project.active_set_mut() {
+            for (channel, image) in channels {
+                let mut layer = Layer::fill_with_source(channel.label(), [1.0; 4], 0.0, FillSource::Image { image }, Projection::default());
+                restrict_to_channel(&mut layer, channel);
+                set.layers.push(layer);
+                count += 1;
+            }
+        }
+        self.bump_texture_sets();
+        count
+    }
+
+    /// Add a fill layer for a built-in material preset (base colour, metallic, roughness).
+    pub fn apply_material_preset(&mut self, name: &str) -> bool {
+        let Some(preset) = substancecraft_material::material_preset(name) else {
+            return false;
+        };
+        self.push_undo();
+        let mut base = Layer::fill(format!("{} Base", preset.name), preset.color, 0.0);
+        restrict_to_channel(&mut base, Channel::BaseColor);
+        let mut metallic = Layer::fill("Metallic", [0.0; 4], preset.metallic);
+        restrict_to_channel(&mut metallic, Channel::Metallic);
+        let mut roughness = Layer::fill("Roughness", [0.0; 4], preset.roughness);
+        restrict_to_channel(&mut roughness, Channel::Roughness);
+        if let Some(set) = self.project.active_set_mut() {
+            set.layers.push(base);
+            set.layers.push(metallic);
+            set.layers.push(roughness);
+        }
+        self.bump_texture_sets();
+        true
+    }
+
+    /// Insert a smart material (built-in or user-saved) as a group on top of the active set.
+    pub fn apply_smart_material(&mut self, name: &str) -> bool {
+        let layers = if let Some(material) = substancecraft_material::smart_material(name) {
+            material.layers
+        } else if let Some((_, layers)) = self.user_smart_materials.iter().find(|(existing, _)| existing == name) {
+            layers.clone()
+        } else {
+            return false;
+        };
+        self.push_undo();
+        let mut group = Layer::group(name);
+        if let LayerKind::Group { children } = &mut group.kind {
+            children.layers = layers;
+        }
+        if let Some(set) = self.project.active_set_mut() {
+            set.layers.push(group);
+        }
+        self.bump_texture_sets();
+        true
+    }
+
+    /// Apply a smart mask (built-in or user-saved) to a layer.
+    pub fn apply_smart_mask(&mut self, layer_index: usize, name: &str) -> bool {
+        let effects = if let Some(mask) = substancecraft_material::smart_mask(name) {
+            mask.effects
+        } else if let Some((_, effects)) = self.user_smart_masks.iter().find(|(existing, _)| existing == name) {
+            effects.clone()
+        } else {
+            return false;
+        };
+        if !self.has_layer(layer_index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(layer_index, |layer| layer.mask = Some(Mask::Stack { effects }));
+        true
+    }
+
+    /// Save a layer (and its subtree) as a user smart material.
+    pub fn save_smart_material(&mut self, layer_index: usize, name: impl Into<String>) -> bool {
+        let name = name.into();
+        if name.trim().is_empty() {
+            return false;
+        }
+        let Some(layer) = self.project.active_set().and_then(|set| set.layers.get(layer_index)).cloned() else {
+            return false;
+        };
+        match self.user_smart_materials.iter_mut().find(|(existing, _)| *existing == name) {
+            Some(slot) => slot.1 = vec![layer],
+            None => self.user_smart_materials.push((name, vec![layer])),
+        }
+        true
+    }
+
+    /// Save a layer's mask effect stack as a user smart mask.
+    pub fn save_smart_mask(&mut self, layer_index: usize, name: impl Into<String>) -> bool {
+        let name = name.into();
+        if name.trim().is_empty() {
+            return false;
+        }
+        let Some(Mask::Stack { effects }) =
+            self.project.active_set().and_then(|set| set.layers.get(layer_index)).and_then(|layer| layer.mask.as_ref())
+        else {
+            return false;
+        };
+        let effects = effects.clone();
+        match self.user_smart_masks.iter_mut().find(|(existing, _)| *existing == name) {
+            Some(slot) => slot.1 = effects,
+            None => self.user_smart_masks.push((name, effects)),
+        }
+        true
+    }
+
+    /// All smart-material names (built-in first, then user-saved).
+    pub fn smart_material_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = substancecraft_material::smart_materials().into_iter().map(|material| material.name.to_string()).collect();
+        names.extend(self.user_smart_materials.iter().map(|(name, _)| name.clone()));
+        names
+    }
+
+    /// All smart-mask names (built-in first, then user-saved).
+    pub fn smart_mask_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = substancecraft_material::smart_masks().into_iter().map(|mask| mask.name.to_string()).collect();
+        names.extend(self.user_smart_masks.iter().map(|(name, _)| name.clone()));
+        names
+    }
+
+    /// All material-preset names.
+    pub fn material_preset_names(&self) -> Vec<String> {
+        substancecraft_material::material_presets().into_iter().map(|preset| preset.name.to_string()).collect()
     }
 
     /// Delete a layer by index from the active set.
@@ -454,6 +645,26 @@ impl Session {
         true
     }
 
+    /// Set a layer's per-channel opacity multiplier (`0..=1`).
+    pub fn set_layer_channel_opacity(&mut self, index: usize, channel: Channel, value: f32) -> bool {
+        if !self.has_layer(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| layer.set_channel_opacity(channel, value));
+        true
+    }
+
+    /// Clear a layer's per-channel opacity override (back to 1.0).
+    pub fn clear_layer_channel_opacity(&mut self, index: usize, channel: Channel) -> bool {
+        if !self.has_layer(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| layer.clear_channel_opacity(channel));
+        true
+    }
+
     /// Rename a layer.
     pub fn set_layer_name(&mut self, index: usize, name: impl Into<String>) -> bool {
         if !self.has_layer(index) {
@@ -472,6 +683,66 @@ impl Session {
         }
         self.push_undo();
         self.edit_layer(index, |layer| layer.mask = mask);
+        true
+    }
+
+    /// Set or clear a layer's connected-part restriction (`None` = every part).
+    pub fn set_layer_parts(&mut self, index: usize, parts: Option<Vec<u32>>) -> bool {
+        if !self.has_layer(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| layer.parts = parts);
+        true
+    }
+
+    /// Append a mask effect to a layer, creating a stack if needed.
+    pub fn add_mask_effect(&mut self, index: usize, effect: MaskEffect) -> bool {
+        if !self.has_layer(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| {
+            let mut effects = match layer.mask.take() {
+                Some(Mask::Stack { effects }) => effects,
+                Some(Mask::Constant(value)) => vec![MaskEffect::Fill { value }],
+                None => Vec::new(),
+            };
+            effects.push(effect);
+            layer.mask = Some(Mask::Stack { effects });
+        });
+        true
+    }
+
+    /// Replace a mask effect (e.g. after editing its parameters).
+    pub fn set_mask_effect(&mut self, index: usize, effect_index: usize, effect: MaskEffect) -> bool {
+        if !self.has_layer(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| {
+            if let Some(Mask::Stack { effects }) = &mut layer.mask
+                && let Some(slot) = effects.get_mut(effect_index)
+            {
+                *slot = effect;
+            }
+        });
+        true
+    }
+
+    /// Remove a mask effect.
+    pub fn remove_mask_effect(&mut self, index: usize, effect_index: usize) -> bool {
+        if !self.has_layer(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| {
+            if let Some(Mask::Stack { effects }) = &mut layer.mask
+                && effect_index < effects.len()
+            {
+                effects.remove(effect_index);
+            }
+        });
         true
     }
 
@@ -498,6 +769,48 @@ impl Session {
         self.edit_layer(index, |layer| {
             if let substancecraft_doc::LayerKind::Fill { value: slot, .. } = &mut layer.kind {
                 *slot = value;
+            }
+        });
+        true
+    }
+
+    /// Set a fill layer's source (uniform / image / procedural / mesh map).
+    pub fn set_fill_source(&mut self, index: usize, source: FillSource) -> bool {
+        if !self.layer_is_fill(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| {
+            if let LayerKind::Fill { source: slot, .. } = &mut layer.kind {
+                *slot = source;
+            }
+        });
+        true
+    }
+
+    /// Set a fill layer's projection.
+    pub fn set_fill_projection(&mut self, index: usize, projection: Projection) -> bool {
+        if !self.layer_is_fill(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| {
+            if let LayerKind::Fill { projection: slot, .. } = &mut layer.kind {
+                *slot = projection;
+            }
+        });
+        true
+    }
+
+    /// Set a fill layer's per-channel strength multiplier.
+    pub fn set_fill_strength(&mut self, index: usize, strength: f32) -> bool {
+        if !self.layer_is_fill(index) {
+            return false;
+        }
+        self.push_undo();
+        self.edit_layer(index, |layer| {
+            if let LayerKind::Fill { strength: slot, .. } = &mut layer.kind {
+                *slot = strength.max(0.0);
             }
         });
         true
@@ -568,6 +881,69 @@ impl Session {
     /// The brush parameters, mutably.
     pub fn brush_mut(&mut self) -> &mut BrushSettings {
         &mut self.brush
+    }
+
+    /// The active brush alpha tip, if any.
+    pub fn brush_alpha(&self) -> Option<&RasterImage> {
+        self.brush_alpha.as_ref()
+    }
+
+    /// Set (or clear) the brush alpha tip.
+    pub fn set_brush_alpha(&mut self, alpha: Option<RasterImage>) {
+        self.brush_alpha = alpha;
+    }
+
+    /// Stamp a straight line from the previous stroke point to `(u, v)`.
+    pub fn stroke_line(&mut self, u: f32, v: f32, pressure: f32, scale: f32) {
+        match self.last_stroke_uv {
+            Some([from_u, from_v]) => {
+                self.begin_stroke(from_u, from_v, pressure, scale);
+                self.extend_stroke(u, v, pressure);
+                self.end_stroke();
+            }
+            None => self.begin_stroke(u, v, pressure, scale),
+        }
+    }
+
+    /// Sample the composited base colour at UV `(u, v)` and set it as the brush colour.
+    pub fn eyedropper(&mut self, u: f32, v: f32) -> Option<[f32; 4]> {
+        let set = self.project.active_set()?.clone();
+        let material = set.materials.first().and_then(|id| self.project.scene.materials.get(*id as usize)).cloned().unwrap_or_default();
+        let resolution = self.paint_resolution().clamp(1, 512);
+        let image = substancecraft_compose::evaluate_base_color(&set, &material, resolution, resolution);
+        let sample = image.sample_nearest(u, v);
+        self.brush.color = sample;
+        Some(sample)
+    }
+
+    /// Save the current brush settings as a named preset.
+    pub fn save_brush_preset(&mut self, name: impl Into<String>) -> bool {
+        let name = name.into();
+        if name.trim().is_empty() {
+            return false;
+        }
+        let settings = self.brush;
+        match self.brush_presets.iter_mut().find(|(existing, _)| *existing == name) {
+            Some(slot) => slot.1 = settings,
+            None => self.brush_presets.push((name, settings)),
+        }
+        true
+    }
+
+    /// Load a saved brush preset by name.
+    pub fn load_brush_preset(&mut self, name: &str) -> bool {
+        match self.brush_presets.iter().find(|(existing, _)| existing == name) {
+            Some((_, settings)) => {
+                self.brush = *settings;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The saved brush preset names.
+    pub fn brush_preset_names(&self) -> Vec<String> {
+        self.brush_presets.iter().map(|(name, _)| name.clone()).collect()
     }
 
     /// The active tool.
@@ -698,11 +1074,12 @@ impl Session {
         if let Some(image) = self.active_paint_image_mut() {
             let size = [image.width as f32, image.height as f32];
             let center = uv_to_pixels(u, v, image.width, image.height);
-            stroke.dabs_wrapped(center, step, size, &mut positions);
+            stroke.dabs_wrapped_lazy(center, step, size, brush.lazy_radius_px, &mut positions);
         }
         self.stroke = Some(stroke);
 
         let source = self.stroke_source.take();
+        let tip = self.brush_alpha.take();
         if let Some(image) = self.active_paint_image_mut() {
             let (width, height) = (image.width as f32, image.height as f32);
             for position in positions {
@@ -710,11 +1087,11 @@ impl Session {
                 for center in brush.symmetry.centers(position, width, height) {
                     let center = [center[0].rem_euclid(width), center[1].rem_euclid(height)];
                     match tool {
-                        ToolKind::Brush => paint_stamp(image, center, radius, brush.hardness, brush.color, alpha),
-                        ToolKind::Eraser => erase_stamp(image, center, radius, brush.hardness, alpha),
+                        ToolKind::Brush => paint_stamp(image, center, radius, brush.hardness, brush.color, alpha, tip.as_ref()),
+                        ToolKind::Eraser => erase_stamp(image, center, radius, brush.hardness, alpha, tip.as_ref()),
                         ToolKind::Clone => {
                             if let Some(source) = &source {
-                                clone_stamp(image, source, center, radius, brush.hardness, brush.clone_offset, alpha);
+                                clone_stamp(image, source, center, radius, brush.hardness, brush.clone_offset, alpha, tip.as_ref());
                             }
                         }
                         ToolKind::Smudge => {
@@ -728,6 +1105,8 @@ impl Session {
             }
         }
         self.stroke_source = source;
+        self.brush_alpha = tip;
+        self.last_stroke_uv = Some([u, v]);
         self.bump_texture_sets();
     }
 
@@ -792,6 +1171,125 @@ impl Session {
     /// The baked image for a map, if present.
     pub fn baked_map(&self, map: BakeMap) -> Option<&RasterImage> {
         self.baked.iter().find(|(kind, _)| *kind == map).map(|(_, image)| image)
+    }
+
+    /// Baked maps keyed by the compositor's mesh-map kinds (for mesh-map fills).
+    pub fn eval_mesh_maps(&self) -> Vec<(substancecraft_doc::MeshMapKind, RasterImage)> {
+        self.baked.iter().filter_map(|(map, image)| substancecraft_doc::MeshMapKind::from_id(map.id()).map(|kind| (kind, image.clone()))).collect()
+    }
+
+    /// A per-texel surface map for the active mesh, for position-based fill projections.
+    pub fn eval_surface(&self, width: u32, height: u32) -> Option<substancecraft_compose::Surface> {
+        (width > 0 && height > 0 && !self.project.scene.mesh.indices.is_empty())
+            .then(|| substancecraft_compose::Surface::build(&self.project.scene.mesh, width, height))
+    }
+
+    /// The mesh's connected parts, per vertex (cached for the current scene).
+    pub fn mesh_parts(&self) -> &[u32] {
+        &self.parts
+    }
+
+    /// The number of connected parts in the mesh.
+    pub fn part_count(&self) -> usize {
+        self.parts.iter().max().map_or(0, |max| *max as usize + 1)
+    }
+
+    /// Per-part triangle counts (index = part id).
+    pub fn part_triangle_counts(&self) -> Vec<usize> {
+        let mesh = &self.project.scene.mesh;
+        let mut counts = vec![0usize; self.part_count()];
+        for triangle in mesh.indices.as_chunks::<3>().0 {
+            if let Some(part) = self.parts.get(triangle[0] as usize)
+                && let Some(count) = counts.get_mut(*part as usize)
+            {
+                *count += 1;
+            }
+        }
+        counts
+    }
+
+    /// Bumped when the viewport display mesh changes (part visibility).
+    pub fn display_revision(&self) -> u64 {
+        self.display_revision
+    }
+
+    /// Whether a connected part is visible in the viewport.
+    pub fn part_visible(&self, part: u32) -> bool {
+        if let Some(isolated) = self.isolate_part {
+            return part == isolated;
+        }
+        !self.hidden_parts.contains(&part)
+    }
+
+    /// Show or hide a connected part in the viewport.
+    pub fn set_part_hidden(&mut self, part: u32, hidden: bool) {
+        if hidden {
+            if !self.hidden_parts.contains(&part) {
+                self.hidden_parts.push(part);
+            }
+        } else {
+            self.hidden_parts.retain(|existing| *existing != part);
+        }
+        self.display_revision = self.display_revision.saturating_add(1);
+    }
+
+    /// Isolate one connected part (`None` clears isolation).
+    pub fn set_isolate_part(&mut self, part: Option<u32>) {
+        self.isolate_part = part;
+        self.display_revision = self.display_revision.saturating_add(1);
+    }
+
+    /// Show every part again.
+    pub fn show_all_parts(&mut self) {
+        self.hidden_parts.clear();
+        self.isolate_part = None;
+        self.display_revision = self.display_revision.saturating_add(1);
+    }
+
+    /// A mesh with hidden/isolated-away parts removed, for the viewport renderer.
+    pub fn display_mesh(&self) -> substancecraft_geom::Mesh {
+        if self.hidden_parts.is_empty() && self.isolate_part.is_none() {
+            return self.project.scene.mesh.clone();
+        }
+        substancecraft_geom::filter_parts(&self.project.scene.mesh, &self.parts, |part| self.part_visible(part))
+    }
+
+    /// Part ids per vertex for a catalogue mode (`pieces`, `islands`, `materials`).
+    pub fn part_ids(&self, mode: &str) -> Vec<u32> {
+        let mesh = &self.project.scene.mesh;
+        match mode {
+            "islands" => substancecraft_geom::uv_islands(mesh),
+            "materials" => substancecraft_geom::material_parts(mesh),
+            _ => self.parts.clone(),
+        }
+    }
+
+    /// Per-part triangle counts for a catalogue mode.
+    pub fn part_counts(&self, mode: &str) -> Vec<usize> {
+        let ids = self.part_ids(mode);
+        let count = ids.iter().max().map_or(0, |max| *max as usize + 1);
+        let mut counts = vec![0usize; count];
+        for triangle in self.project.scene.mesh.indices.as_chunks::<3>().0 {
+            if let Some(part) = ids.get(triangle[0] as usize)
+                && let Some(slot) = counts.get_mut(*part as usize)
+            {
+                *slot += 1;
+            }
+        }
+        counts
+    }
+
+    /// The connected part id under a viewport ray (pixel coordinates within a `width × height`
+    /// viewport), if any.
+    pub fn pick_part(&self, x: f32, y: f32, width: f32, height: f32) -> Option<u32> {
+        if width <= 0.0 || height <= 0.0 {
+            return None;
+        }
+        let ndc = substancecraft_geom::glam::Vec2::new((x / width) * 2.0 - 1.0, 1.0 - (y / height) * 2.0);
+        let ray = self.camera.ray(ndc, width / height);
+        let hit = substancecraft_geom::raycast(&self.project.scene.mesh, &ray)?;
+        let first = self.project.scene.mesh.indices.get(hit.triangle as usize * 3)?;
+        self.parts.get(*first as usize).copied()
     }
 
     /// Bake every mesh map for the current scene, replacing any previous results.
@@ -936,6 +1434,11 @@ fn uv_to_pixels(u: f32, v: f32, width: u32, height: u32) -> [f32; 2] {
 }
 
 /// The resident byte size of the paint images in a layer stack (recursing into groups).
+/// Restrict a layer's coverage to one channel (set every other channel's opacity multiplier to 0).
+fn restrict_to_channel(layer: &mut Layer, channel: Channel) {
+    layer.channel_opacity = Channel::ALL.iter().map(|existing| (*existing, if *existing == channel { 1.0 } else { 0.0 })).collect();
+}
+
 fn layer_bytes(stack: &LayerStack) -> u64 {
     let mut total = 0u64;
     for layer in &stack.layers {

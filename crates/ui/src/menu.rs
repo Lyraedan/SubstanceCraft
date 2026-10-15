@@ -84,6 +84,13 @@ pub(crate) fn menu_bar(app: &mut StudioApp, ui: &mut egui::Ui) {
                         ui.separator();
                     }
                 }
+                if level == "Help" {
+                    if ui.button("Keyboard Shortcuts").clicked() {
+                        app.show_shortcuts = true;
+                        ui.close();
+                    }
+                    ui.separator();
+                }
                 let mut clicked: Option<&'static str> = None;
                 for command in commands.iter().filter(|command| command.top == level) {
                     let button = match command.shortcut {

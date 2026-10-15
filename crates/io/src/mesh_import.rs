@@ -9,18 +9,45 @@ use substancecraft_geom::{Mesh, Submesh};
 
 use crate::IoError;
 
-/// Load a mesh from a path, choosing the parser by extension (`.obj`, `.gltf`, `.glb`).
+/// Load a mesh from a path, choosing the parser by extension (`.obj`, `.gltf`, `.glb`, `.stl`,
+/// `.ply`, `.dae`, binary `.fbx`). Unknown extensions fall back to sniffing the leading bytes.
 pub fn load_scene(path: impl AsRef<Path>) -> Result<Scene, IoError> {
     let path = path.as_ref();
     let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default().to_ascii_lowercase();
-    match extension.as_str() {
-        "obj" => {
-            let bytes = std::fs::read(path)?;
-            load_obj(&bytes)
-        }
-        "gltf" | "glb" => load_gltf(path),
-        other => Err(IoError::UnsupportedFormat(other.to_string())),
+    // glTF resolves external buffers and images relative to the file, so keep the path.
+    if matches!(extension.as_str(), "gltf" | "glb") {
+        return load_gltf(path);
     }
+
+    let bytes = std::fs::read(path)?;
+    match extension.as_str() {
+        "obj" => load_obj(&bytes),
+        "stl" => crate::mesh_formats::load_stl(&bytes),
+        "ply" => crate::mesh_formats::load_ply(&bytes),
+        "fbx" => crate::fbx::load_fbx(&bytes),
+        "dae" => crate::collada::load_collada(&bytes),
+        other => sniff_scene(&bytes).unwrap_or(Err(IoError::UnsupportedFormat(other.to_string()))),
+    }
+}
+
+/// Detect a mesh format from its leading bytes when the extension is missing or unknown.
+fn sniff_scene(bytes: &[u8]) -> Option<Result<Scene, IoError>> {
+    if crate::fbx::is_binary(bytes) {
+        return Some(crate::fbx::load_fbx(bytes));
+    }
+    let head = &bytes[..bytes.len().min(256)];
+    let text = String::from_utf8_lossy(head);
+    let trimmed = text.trim_start_matches('\u{feff}').trim_start();
+    if text.starts_with("ply") {
+        return Some(crate::mesh_formats::load_ply(bytes));
+    }
+    if text.starts_with("solid") {
+        return Some(crate::mesh_formats::load_stl(bytes));
+    }
+    if trimmed.starts_with("<?xml") || trimmed.starts_with("<COLLADA") {
+        return Some(crate::collada::load_collada(bytes));
+    }
+    None
 }
 
 /// Parse a Wavefront OBJ file from bytes into a scene.
@@ -200,6 +227,22 @@ v -1 1 0
 f 1 2 3 4
 ";
 
+    const ASCII_PLY: &str = "\
+ply
+format ascii 1.0
+element vertex 3
+property float x
+property float y
+property float z
+element face 1
+property list uchar int vertex_indices
+end_header
+0 0 0
+1 0 0
+0 1 0
+3 0 1 2
+";
+
     #[test]
     fn parses_a_triangle() {
         let scene = load_obj(TRIANGLE_OBJ.as_bytes()).expect("obj");
@@ -227,7 +270,25 @@ f 1 2 3 4
 
     #[test]
     fn unsupported_extension_is_reported() {
-        let err = load_scene("/tmp/does-not-exist.fbx").expect_err("unsupported");
+        let path = std::env::temp_dir().join(format!("substancecraft-unsupported-{}.xyz", std::process::id()));
+        std::fs::write(&path, b"not a mesh file").expect("write temp");
+        let err = load_scene(&path).expect_err("unsupported");
+        let _ = std::fs::remove_file(&path);
         assert!(matches!(err, IoError::UnsupportedFormat(_)));
+    }
+
+    #[test]
+    fn a_missing_file_is_an_io_error() {
+        let err = load_scene("/tmp/substancecraft-does-not-exist.stl").expect_err("missing");
+        assert!(matches!(err, IoError::Io(_)));
+    }
+
+    #[test]
+    fn ply_is_detected_by_content_when_the_extension_is_unknown() {
+        let path = std::env::temp_dir().join(format!("substancecraft-sniff-{}.mesh", std::process::id()));
+        std::fs::write(&path, ASCII_PLY.as_bytes()).expect("write temp");
+        let scene = load_scene(&path).expect("sniffed ply");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(scene.mesh.triangle_count(), 1);
     }
 }

@@ -15,6 +15,7 @@ workspace = true
 substancecraft-doc.workspace = true
 substancecraft-geom.workspace = true
 substancecraft-raster.workspace = true
+substancecraft-compose.workspace = true
 substancecraft-format.workspace = true
 substancecraft-render.workspace = true
 substancecraft-io.workspace = true

@@ -102,11 +102,26 @@ pub struct ExportSettings {
     pub preset: String,
     /// Whether to emit one file per UV tile (`$udim` appended).
     pub udim: bool,
+    /// Bake the height channel into the exported normal map.
+    pub height_to_normal: bool,
+    /// Strength of the height-into-normal perturbation.
+    pub normal_strength: f32,
+    /// Write DirectX-style normals (green flipped) instead of OpenGL.
+    pub directx_normal: bool,
 }
 
 impl Default for ExportSettings {
     fn default() -> Self {
-        Self { resolution: 2048, format: None, naming: String::new(), preset: "openpbr".to_string(), udim: false }
+        Self {
+            resolution: 2048,
+            format: None,
+            naming: String::new(),
+            preset: "openpbr".to_string(),
+            udim: false,
+            height_to_normal: false,
+            normal_strength: 1.0,
+            directx_normal: false,
+        }
     }
 }
 
@@ -179,10 +194,38 @@ pub fn preset(id: &str) -> Option<ExportPreset> {
 
 /// Export a texture set to `dir`, returning the written paths.
 pub fn export_set(set: &TextureSet, material: &Material, settings: &ExportSettings, dir: &Path) -> Result<Vec<PathBuf>, IoError> {
+    export_set_ctx(set, material, settings, dir, &substancecraft_compose::EvalContext::default())
+}
+
+/// Export a texture set to `dir`, using `context` for projections and mesh-map fills.
+pub fn export_set_ctx(
+    set: &TextureSet,
+    material: &Material,
+    settings: &ExportSettings,
+    dir: &Path,
+    context: &substancecraft_compose::EvalContext<'_>,
+) -> Result<Vec<PathBuf>, IoError> {
     let preset = preset(&settings.preset).or_else(|| preset("openpbr")).ok_or_else(|| IoError::UnsupportedFormat(settings.preset.clone()))?;
     let format = settings.format.unwrap_or(preset.format);
     let resolution = settings.resolution.clamp(16, 8192);
-    let channels = substancecraft_compose::evaluate_set(set, material, resolution, resolution);
+    let mut channels = substancecraft_compose::evaluate_set_ctx(set, material, resolution, resolution, context);
+
+    // Optionally bake the height channel into the normal map, then flip for DirectX.
+    if settings.height_to_normal
+        && let Some(height) = channels.iter().find(|(channel, _)| *channel == Channel::Height).map(|(_, image)| image.clone())
+    {
+        let normal = channels.iter().find(|(channel, _)| *channel == Channel::Normal).map(|(_, image)| image.clone());
+        let combined = height_to_normal(normal.as_ref(), &height, settings.normal_strength);
+        match channels.iter_mut().find(|(channel, _)| *channel == Channel::Normal) {
+            Some(slot) => slot.1 = combined,
+            None => channels.push((Channel::Normal, combined)),
+        }
+    }
+    if settings.directx_normal
+        && let Some(slot) = channels.iter_mut().find(|(channel, _)| *channel == Channel::Normal)
+    {
+        slot.1 = flip_normal_green(&slot.1);
+    }
 
     if let Err(err) = std::fs::create_dir_all(dir) {
         return Err(IoError::Io(err));
@@ -241,6 +284,47 @@ fn pack(channels: &[(Channel, RasterImage)], packing: &Packing) -> Option<Raster
         }
     }
     Some(image)
+}
+
+/// Bake a height map into a tangent-space normal map (finite-difference gradient).
+fn height_to_normal(normal: Option<&RasterImage>, height: &RasterImage, strength: f32) -> RasterImage {
+    let (width, height_px) = (height.width, height.height);
+    let mut out = RasterImage::filled(width, height_px, [0.5, 0.5, 1.0, 1.0]);
+    if width == 0 || height_px == 0 {
+        return out;
+    }
+    let sample = |x: i64, y: i64| -> f32 {
+        let x = x.rem_euclid(width as i64) as u32;
+        let y = y.rem_euclid(height_px as i64) as u32;
+        height.pixel(x, y)[0]
+    };
+    for y in 0..height_px {
+        for x in 0..width {
+            let dhdu = (sample(x as i64 + 1, y as i64) - sample(x as i64 - 1, y as i64)) * 0.5;
+            let dhdv = (sample(x as i64, y as i64 + 1) - sample(x as i64, y as i64 - 1)) * 0.5;
+            let base = normal
+                .map(|image| {
+                    let pixel = image.pixel(x, y);
+                    [pixel[0] * 2.0 - 1.0, pixel[1] * 2.0 - 1.0, pixel[2] * 2.0 - 1.0]
+                })
+                .unwrap_or([0.0, 0.0, 1.0]);
+            let nx = base[0] - dhdu * strength;
+            let ny = base[1] - dhdv * strength;
+            let nz = base[2].max(1e-3);
+            let length = (nx * nx + ny * ny + nz * nz).sqrt().max(1e-6);
+            out.set_pixel(x, y, [(nx / length) * 0.5 + 0.5, (ny / length) * 0.5 + 0.5, (nz / length) * 0.5 + 0.5, 1.0]);
+        }
+    }
+    out
+}
+
+/// Flip a normal map's green channel (OpenGL ↔ DirectX).
+fn flip_normal_green(image: &RasterImage) -> RasterImage {
+    let mut out = image.clone();
+    for pixel in &mut out.pixels {
+        pixel[1] = 1.0 - pixel[1];
+    }
+    out
 }
 
 /// Write an image in the requested format.
@@ -336,5 +420,25 @@ mod tests {
         for entry in presets() {
             assert_eq!(preset(&entry.id).map(|found| found.id), Some(entry.id.clone()));
         }
+    }
+
+    #[test]
+    fn height_bakes_into_normals_and_directx_flips_green() {
+        let flat = RasterImage::filled(4, 4, [0.5, 0.5, 0.5, 1.0]);
+        let normal = height_to_normal(None, &flat, 1.0);
+        assert!((normal.pixel(0, 0)[2] - 1.0).abs() < 1e-3, "flat height should stay flat");
+
+        let mut ramp = RasterImage::filled(4, 4, [0.5, 0.5, 0.5, 1.0]);
+        for x in 0..4u32 {
+            for y in 0..4u32 {
+                let v = x as f32 / 3.0;
+                ramp.set_pixel(x, y, [v, v, v, 1.0]);
+            }
+        }
+        let tilted = height_to_normal(None, &ramp, 1.0);
+        assert!((tilted.pixel(2, 2)[0] - 0.5).abs() > 0.01, "a height ramp should tilt the normal");
+
+        let flipped = flip_normal_green(&normal);
+        assert!((flipped.pixel(0, 0)[1] - (1.0 - normal.pixel(0, 0)[1])).abs() < 1e-6);
     }
 }

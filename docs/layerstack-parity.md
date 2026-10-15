@@ -6,26 +6,33 @@ _Last reviewed: 2026-10-13 (M12)._
 
 ## Layers
 
-- [x] Fill layers (constant colour; scalar value for metallic/roughness/height/AO).
+- [x] Fill layers with sources: uniform colour/scalar, imported image, procedural generator and baked
+      mesh map.
+- [x] Fill projection: UV, planar and tri-planar, with tiling, rotation, offset, axis and per-channel
+      strength.
 - [x] Paint layers (painted from the brush tools).
 - [x] Effect layers — a generator fills, a filter transforms the pixels below.
 - [x] Groups with their own blending.
-- [ ] Material-reference fills and projection fills.
+- [x] Per-layer connected-part restriction (restrict a layer's coverage to a set of mesh pieces).
+- [ ] Material-reference fills.
 - [ ] Layer instancing across texture sets.
 
 ## Masks
 
-- [x] Per-layer mask (constant coverage).
-- [ ] Painted masks.
-- [x] Generators and filters usable as effects (smart masks still pending).
-- [ ] Geometry masks.
+- [x] Per-layer mask: constant coverage or a per-texel effect stack (fill, generator, filter, baked
+      mesh map, projected image) evaluated with invert.
+- [ ] Painted (brush) masks.
+- [x] Generators and filters usable as mask effects (saved smart masks still pending).
+- [ ] Geometry / part masks.
 
 ## Blending
 
-- [x] Standard blend modes: normal, multiply, screen, overlay, add, subtract, darken, lighten.
+- [x] 26 blend modes: normal, multiply, screen, overlay, add, subtract, darken, lighten, color
+      dodge/burn, linear burn, hard/soft/vivid/linear/pin light, hard mix, difference, exclusion,
+      divide, and the non-separable hue/saturation/color/luminosity/darker-color/lighter-color.
 - [x] Opacity and visibility.
 - [x] Per-channel compositing (each channel is evaluated independently).
-- [ ] Per-channel blending overrides.
+- [x] Per-channel opacity overrides (a per-channel multiplier on the layer opacity).
 - [ ] Anchor points.
 
 ## Operations

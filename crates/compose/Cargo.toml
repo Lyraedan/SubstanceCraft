@@ -12,6 +12,7 @@ description = "CPU layer-stack compositor: the reference oracle for the GPU comp
 workspace = true
 
 [dependencies]
+substancecraft-geom.workspace = true
 substancecraft-doc.workspace = true
 substancecraft-raster.workspace = true
 substancecraft-algo.workspace = true

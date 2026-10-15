@@ -29,11 +29,13 @@ pub enum DockPanel {
     Bake,
     /// Post-effects settings.
     Post,
+    /// The 2D UV view of the active channel.
+    UvView,
 }
 
 impl DockPanel {
     /// Every panel.
-    pub const ALL: [DockPanel; 8] = [
+    pub const ALL: [DockPanel; 9] = [
         DockPanel::Viewport,
         DockPanel::TextureSetList,
         DockPanel::Layers,
@@ -42,6 +44,7 @@ impl DockPanel {
         DockPanel::Assets,
         DockPanel::Bake,
         DockPanel::Post,
+        DockPanel::UvView,
     ];
 
     /// A stable id (for state and menus).
@@ -55,6 +58,7 @@ impl DockPanel {
             DockPanel::Assets => "assets",
             DockPanel::Bake => "bake",
             DockPanel::Post => "post",
+            DockPanel::UvView => "uv_view",
         }
     }
 
@@ -69,6 +73,7 @@ impl DockPanel {
             DockPanel::Assets => "Assets",
             DockPanel::Bake => "Bake",
             DockPanel::Post => "Post",
+            DockPanel::UvView => "UV View",
         }
     }
 
@@ -106,7 +111,7 @@ pub fn default_layout() -> Layout<DockPanel> {
         axis: SplitAxis::Vertical,
         size: SplitSize::FixedSecond(180.0),
         first: Box::new(main),
-        second: Box::new(Node::Tabs { panels: vec![DockPanel::Assets, DockPanel::Bake, DockPanel::Post], active: 0 }),
+        second: Box::new(Node::Tabs { panels: vec![DockPanel::Assets, DockPanel::Bake, DockPanel::Post, DockPanel::UvView], active: 0 }),
     };
     Layout { root: Some(root), floating: Vec::new() }
 }

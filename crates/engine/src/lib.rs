@@ -17,6 +17,7 @@ pub mod paint_cmds;
 pub mod project_cmds;
 pub mod scene_cmds;
 pub mod session;
+pub mod shelf_cmds;
 pub mod texture_set_cmds;
 pub mod ui_cmds;
 pub mod viewport_cmds;

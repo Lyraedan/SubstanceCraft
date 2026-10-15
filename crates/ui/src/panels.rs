@@ -8,7 +8,10 @@ use std::collections::HashMap;
 
 use serde_json::{Value, json};
 use substancecraft_bake::BakeMap;
-use substancecraft_doc::{BlendMode, Channel, Effect, Filter, Generator, LayerKind, Material, Shader, TextureSet, UvTile};
+use substancecraft_doc::{
+    BlendMode, Channel, Effect, FillSource, Filter, Generator, LayerKind, Mask, MaskEffect, Material, MeshMapKind, Projection, ProjectionKind,
+    Shader, TextureSet, UvTile,
+};
 use substancecraft_engine::session::lock;
 use substancecraft_paint::ToolKind;
 
@@ -23,6 +26,8 @@ const ASSET_LIBRARIES: &[&str] = &["All Libraries", "Project"];
 const ASSET_FILTERS: &[(&str, &str, &str)] = &[
     ("All", "layers", "all"),
     ("Materials", "material", "material"),
+    ("Smart Materials", "material", "smart_material"),
+    ("Smart Masks", "layers", "smart_mask"),
     ("Brushes", "brush", "brush"),
     ("Generators", "generator", "generator"),
     ("Filters", "filter", "filter"),
@@ -122,16 +127,35 @@ struct LayerView {
     opacity: f32,
     blend: BlendMode,
     mask: Option<f32>,
+    mask_effects: Vec<MaskEffect>,
+    parts: Option<Vec<u32>>,
+    channel_opacity: Vec<(Channel, f32)>,
     color: Option<[f32; 4]>,
     value: Option<f32>,
+    source: &'static str,
+    generator: Option<&'static str>,
+    mesh_map: Option<MeshMapKind>,
+    strength: f32,
+    projection: Projection,
     effect: Option<Effect>,
 }
 
 /// Build a UI view of a layer.
 fn layer_view(layer: &substancecraft_doc::Layer) -> LayerView {
-    let (color, value) = match &layer.kind {
-        LayerKind::Fill { color, value } => (Some(*color), Some(*value)),
-        _ => (None, None),
+    let (color, value, source, generator, mesh_map, strength, projection) = match &layer.kind {
+        LayerKind::Fill { color, value, source, projection, strength } => {
+            let (generator, mesh_map) = match source {
+                FillSource::Procedural { generator } => (Some(generator.id()), None),
+                FillSource::MeshMap { kind } => (None, Some(*kind)),
+                _ => (None, None),
+            };
+            (Some(*color), Some(*value), source.id(), generator, mesh_map, *strength, *projection)
+        }
+        _ => (None, None, "uniform", None, None, 1.0, Projection::default()),
+    };
+    let mask_effects = match &layer.mask {
+        Some(Mask::Stack { effects }) => effects.clone(),
+        _ => Vec::new(),
     };
     LayerView {
         name: layer.name.clone(),
@@ -139,9 +163,17 @@ fn layer_view(layer: &substancecraft_doc::Layer) -> LayerView {
         visible: layer.visible,
         opacity: layer.opacity,
         blend: layer.blend,
-        mask: layer.mask.map(|mask| mask.coverage()),
+        mask: layer.mask.as_ref().map(|mask| mask.coverage()),
+        mask_effects,
+        parts: layer.parts.clone(),
+        channel_opacity: layer.channel_opacity.clone(),
         color,
         value,
+        source,
+        generator,
+        mesh_map,
+        strength,
+        projection,
         effect: layer.effect_kind(),
     }
 }
@@ -332,10 +364,12 @@ impl StudioApp {
 
     /// The layer stack list and the selected layer's controls.
     pub(crate) fn layer_stack_panel(&mut self, ui: &mut egui::Ui) {
-        let (views, can_undo, can_redo) = {
+        let (views, channels, part_count, can_undo, can_redo) = {
             let session = lock(&self.session);
-            let views = session.project().active_set().map(|set| set.layers.layers.iter().map(layer_view).collect::<Vec<_>>()).unwrap_or_default();
-            (views, session.can_undo(), session.can_redo())
+            let set = session.project().active_set();
+            let views = set.map(|set| set.layers.layers.iter().map(layer_view).collect::<Vec<_>>()).unwrap_or_default();
+            let channels = set.map(|set| set.channels.clone()).unwrap_or_default();
+            (views, channels, session.part_count(), session.can_undo(), session.can_redo())
         };
 
         if views.is_empty() {
@@ -375,6 +409,26 @@ impl StudioApp {
             if ui.add_enabled(can_redo, egui::Button::image(icons::image("redo", 14.0))).on_hover_text("Redo").clicked() {
                 self.report(self.dispatch("edit.redo", &Value::Null));
             }
+        });
+        let (undo_depth, redo_depth) = {
+            let session = lock(&self.session);
+            (session.undo_depth(), session.redo_depth())
+        };
+        egui::CollapsingHeader::new(format!("History ({undo_depth} undo / {redo_depth} redo)")).default_open(false).show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for back in 1..=undo_depth.min(8) {
+                    if ui.button(format!("Undo {back}")).clicked() {
+                        self.report(self.dispatch("edit.undo_steps", &json!({ "count": back })));
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                for forward in 1..=redo_depth.min(8) {
+                    if ui.button(format!("Redo {forward}")).clicked() {
+                        self.report(self.dispatch("edit.redo_steps", &json!({ "count": forward })));
+                    }
+                }
+            });
         });
         ui.separator();
 
@@ -416,19 +470,130 @@ impl StudioApp {
                 if ui.add(egui::Slider::new(&mut opacity, 0.0..=1.0).text("Opacity")).changed() {
                     actions.push(("layer.set_opacity", json!({ "index": index, "opacity": opacity })));
                 }
-                if let Some(color) = view.color {
-                    let mut rgba = color;
-                    ui.horizontal(|ui| {
-                        ui.label("Color");
-                        if ui.color_edit_button_rgba_unmultiplied(&mut rgba).changed() {
-                            actions.push(("layer.set_fill_color", json!({ "index": index, "color": rgba })));
+                if !channels.is_empty() {
+                    egui::CollapsingHeader::new("Channel opacity").default_open(false).show(ui, |ui| {
+                        for channel in &channels {
+                            let mut value = view.channel_opacity.iter().find(|(stored, _)| stored == channel).map(|(_, value)| *value).unwrap_or(1.0);
+                            ui.horizontal(|ui| {
+                                ui.label(channel.label());
+                                if ui.add(egui::Slider::new(&mut value, 0.0..=1.0)).changed() {
+                                    actions.push(("layer.set_channel_opacity", json!({ "index": index, "channel": channel.id(), "opacity": value })));
+                                }
+                                if ui.small_button("reset").clicked() {
+                                    actions.push(("layer.clear_channel_opacity", json!({ "index": index, "channel": channel.id() })));
+                                }
+                            });
                         }
                     });
                 }
-                if let Some(value) = view.value {
-                    let mut scalar = value;
-                    if ui.add(egui::Slider::new(&mut scalar, 0.0..=1.0).text("Value")).changed() {
-                        actions.push(("layer.set_fill_value", json!({ "index": index, "value": scalar })));
+                if view.color.is_some() {
+                    ui.separator();
+                    ui.label(egui::RichText::new("Fill").color(Tokens::DARK.text_dim));
+                    let source_label = match view.source {
+                        "image" => "Image",
+                        "procedural" => "Procedural",
+                        "mesh_map" => "Mesh map",
+                        _ => "Uniform",
+                    };
+                    let mut source = view.source;
+                    egui::ComboBox::from_id_salt("sc.layer.source").selected_text(source_label).show_ui(ui, |ui| {
+                        for (id, label) in [("uniform", "Uniform"), ("image", "Image"), ("procedural", "Procedural"), ("mesh_map", "Mesh map")] {
+                            if ui.selectable_label(view.source == id, label).clicked() {
+                                source = id;
+                            }
+                        }
+                    });
+                    if source != view.source {
+                        let image_filter = || rfd::FileDialog::new().add_filter("Images", &["png", "jpg", "jpeg", "tga", "tif", "tiff", "exr", "hdr", "bmp"]).pick_file();
+                        match source {
+                            "uniform" => actions.push(("layer.set_fill_source", json!({ "index": index, "source": "uniform" }))),
+                            "image" => {
+                                if let Some(path) = image_filter() {
+                                    actions.push(("layer.set_fill_image", json!({ "index": index, "path": path.to_string_lossy() })));
+                                }
+                            }
+                            "procedural" => actions.push(("layer.set_fill_source", json!({ "index": index, "source": "procedural", "generator": "perlin" }))),
+                            _ => actions.push(("layer.set_fill_source", json!({ "index": index, "source": "mesh_map", "mesh_map": "curvature" }))),
+                        }
+                    }
+                    if view.source == "image"
+                        && ui.button("Replace image…").clicked()
+                        && let Some(path) = rfd::FileDialog::new().add_filter("Images", &["png", "jpg", "jpeg", "tga", "tif", "tiff", "exr", "hdr", "bmp"]).pick_file()
+                    {
+                        actions.push(("layer.set_fill_image", json!({ "index": index, "path": path.to_string_lossy() })));
+                    }
+                    if view.source == "procedural" {
+                        let generator = view.generator.unwrap_or("perlin");
+                        let selected = Generator::from_id(generator).map(|value| value.label()).unwrap_or("Perlin Noise");
+                        egui::ComboBox::from_id_salt("sc.layer.generator").selected_text(selected).show_ui(ui, |ui| {
+                            for id in Generator::IDS {
+                                let label = Generator::from_id(id).map(|value| value.label()).unwrap_or(id);
+                                if ui.selectable_label(generator == id, label).clicked() {
+                                    actions.push(("layer.set_fill_source", json!({ "index": index, "source": "procedural", "generator": id })));
+                                }
+                            }
+                        });
+                    }
+                    if view.source == "mesh_map" {
+                        let map = view.mesh_map.unwrap_or(MeshMapKind::Curvature);
+                        egui::ComboBox::from_id_salt("sc.layer.mesh_map").selected_text(map.label()).show_ui(ui, |ui| {
+                            for kind in MeshMapKind::ALL {
+                                if ui.selectable_label(map == kind, kind.label()).clicked() {
+                                    actions.push(("layer.set_fill_source", json!({ "index": index, "source": "mesh_map", "mesh_map": kind.id() })));
+                                }
+                            }
+                        });
+                    }
+                    if view.source == "uniform" {
+                        if let Some(color) = view.color {
+                            let mut rgba = color;
+                            ui.horizontal(|ui| {
+                                ui.label("Color");
+                                if ui.color_edit_button_rgba_unmultiplied(&mut rgba).changed() {
+                                    actions.push(("layer.set_fill_color", json!({ "index": index, "color": rgba })));
+                                }
+                            });
+                        }
+                        if let Some(value) = view.value {
+                            let mut scalar = value;
+                            if ui.add(egui::Slider::new(&mut scalar, 0.0..=1.0).text("Value")).changed() {
+                                actions.push(("layer.set_fill_value", json!({ "index": index, "value": scalar })));
+                            }
+                        }
+                    } else {
+                        let mut kind = view.projection.kind;
+                        ui.horizontal(|ui| {
+                            ui.label("Projection");
+                            egui::ComboBox::from_id_salt("sc.layer.projection").selected_text(kind.label()).show_ui(ui, |ui| {
+                                for option in ProjectionKind::ALL {
+                                    if ui.selectable_label(kind == option, option.label()).clicked() {
+                                        kind = option;
+                                    }
+                                }
+                            });
+                        });
+                        if kind != view.projection.kind {
+                            actions.push(("layer.set_fill_projection", json!({ "index": index, "kind": kind.id() })));
+                        }
+                        let (mut scale_x, mut scale_y) = (view.projection.scale[0], view.projection.scale[1]);
+                        let mut rotation = view.projection.rotation;
+                        let (mut offset_x, mut offset_y) = (view.projection.offset[0], view.projection.offset[1]);
+                        let mut changed = false;
+                        changed |= ui.add(egui::Slider::new(&mut scale_x, 0.05..=16.0).text("Tile X")).changed();
+                        changed |= ui.add(egui::Slider::new(&mut scale_y, 0.05..=16.0).text("Tile Y")).changed();
+                        changed |= ui.add(egui::Slider::new(&mut rotation, -180.0..=180.0).text("Rotation")).changed();
+                        changed |= ui.add(egui::Slider::new(&mut offset_x, -1.0..=1.0).text("Offset X")).changed();
+                        changed |= ui.add(egui::Slider::new(&mut offset_y, -1.0..=1.0).text("Offset Y")).changed();
+                        if changed {
+                            actions.push((
+                                "layer.set_fill_projection",
+                                json!({ "index": index, "scale_x": scale_x, "scale_y": scale_y, "rotation": rotation, "offset_x": offset_x, "offset_y": offset_y }),
+                            ));
+                        }
+                    }
+                    let mut strength = view.strength;
+                    if ui.add(egui::Slider::new(&mut strength, 0.0..=4.0).text("Strength")).changed() {
+                        actions.push(("layer.set_fill_strength", json!({ "index": index, "strength": strength })));
                     }
                 }
                 ui.horizontal(|ui| {
@@ -444,6 +609,109 @@ impl StudioApp {
                         }
                     }
                 });
+                egui::CollapsingHeader::new("Mask effects").default_open(!view.mask_effects.is_empty()).show(ui, |ui| {
+                    for (effect_index, effect) in view.mask_effects.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(effect.label());
+                            if ui.small_button("x").clicked() {
+                                actions.push(("layer.remove_mask_effect", json!({ "index": index, "effect_index": effect_index })));
+                            }
+                        });
+                        let params = match effect {
+                            MaskEffect::Generator(generator) => generator.params(),
+                            MaskEffect::Filter(filter) => filter.params(),
+                            _ => Vec::new(),
+                        };
+                        for param in params {
+                            let mut value = param.value;
+                            if ui.add(egui::Slider::new(&mut value, param.min..=param.max).text(param.label)).changed() {
+                                let mut object = serde_json::Map::new();
+                                object.insert("index".into(), json!(index));
+                                object.insert("effect_index".into(), json!(effect_index));
+                                object.insert(param.key.into(), json!(value));
+                                actions.push(("layer.set_mask_effect", Value::Object(object)));
+                            }
+                        }
+                        match effect {
+                            MaskEffect::Fill { value } => {
+                                let mut value = *value;
+                                if ui.add(egui::Slider::new(&mut value, 0.0..=1.0).text("Value")).changed() {
+                                    actions.push(("layer.set_mask_effect", json!({ "index": index, "effect_index": effect_index, "value": value })));
+                                }
+                            }
+                            MaskEffect::MeshMap { invert, .. } | MaskEffect::Image { invert, .. } => {
+                                let mut value = *invert;
+                                if ui.checkbox(&mut value, "Invert").changed() {
+                                    actions.push(("layer.set_mask_effect", json!({ "index": index, "effect_index": effect_index, "invert": value })));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("+ Curvature").clicked() {
+                            actions.push(("layer.add_mask_effect", json!({ "index": index, "effect": "mesh_map", "mesh_map": "curvature" })));
+                        }
+                        if ui.button("+ Cavity").clicked() {
+                            actions.push(("layer.add_mask_effect", json!({ "index": index, "effect": "mesh_map", "mesh_map": "ambient_occlusion" })));
+                        }
+                        if ui.button("+ Noise").clicked() {
+                            actions.push(("layer.add_mask_effect", json!({ "index": index, "effect": "generator", "generator": "perlin" })));
+                        }
+                        if ui.button("+ Levels").clicked() {
+                            actions.push(("layer.add_mask_effect", json!({ "index": index, "effect": "filter", "filter": "levels" })));
+                        }
+                        if ui.button("+ Invert").clicked() {
+                            actions.push(("layer.add_mask_effect", json!({ "index": index, "effect": "filter", "filter": "invert" })));
+                        }
+                        if ui.button("+ Image…").clicked()
+                            && let Some(path) = rfd::FileDialog::new().add_filter("Images", &["png", "jpg", "jpeg", "tga", "tif", "tiff", "exr", "hdr", "bmp"]).pick_file()
+                        {
+                            actions.push(("layer.add_mask_effect", json!({ "index": index, "effect": "image", "path": path.to_string_lossy() })));
+                        }
+                    });
+                });
+                ui.horizontal(|ui| {
+                    if ui.small_button("Save smart material").clicked() {
+                        actions.push(("layer.save_smart_material", json!({ "index": index, "name": view.name.clone() })));
+                    }
+                    if ui.small_button("Save smart mask").clicked() {
+                        actions.push(("layer.save_smart_mask", json!({ "index": index, "name": view.name.clone() })));
+                    }
+                });
+                if part_count > 1 {
+                    egui::CollapsingHeader::new("Parts").default_open(view.parts.is_some()).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            if ui.small_button("All").clicked() {
+                                actions.push(("layer.set_parts", json!({ "index": index, "parts": Value::Null })));
+                            }
+                            if ui.small_button("None").clicked() {
+                                actions.push(("layer.set_parts", json!({ "index": index, "parts": [] })));
+                            }
+                            if ui.small_button("Invert").clicked() {
+                                let parts: Vec<u32> = (0..part_count as u32)
+                                    .filter(|part| !view.parts.as_ref().is_some_and(|set| set.contains(part)))
+                                    .collect();
+                                actions.push(("layer.set_parts", json!({ "index": index, "parts": parts })));
+                            }
+                        });
+                        for part in 0..part_count {
+                            let part = part as u32;
+                            let mut on = view.parts.as_ref().is_none_or(|set| set.contains(&part));
+                            if ui.checkbox(&mut on, format!("Part {part}")).changed() {
+                                let mut set: Vec<u32> = view.parts.clone().unwrap_or_else(|| (0..part_count as u32).collect());
+                                if on {
+                                    if !set.contains(&part) {
+                                        set.push(part);
+                                    }
+                                } else {
+                                    set.retain(|existing| *existing != part);
+                                }
+                                actions.push(("layer.set_parts", json!({ "index": index, "parts": set })));
+                            }
+                        }
+                    });
+                }
                 if let Some(effect) = view.effect {
                     ui.separator();
                     ui.label(egui::RichText::new(format!("{} parameters", effect.id())).color(Tokens::DARK.text_dim));
@@ -492,7 +760,7 @@ impl StudioApp {
             let mask = project.active_set().and_then(|set| {
                 let layers = &set.layers.layers;
                 let index = if self.active_layer < layers.len() { self.active_layer } else { layers.len().saturating_sub(1) };
-                layers.get(index).and_then(|layer| layer.mask.map(|mask| mask.coverage()))
+                layers.get(index).and_then(|layer| layer.mask.as_ref().map(|mask| mask.coverage()))
             });
             (session.texture_set_revision(), set, material, mask)
         };
@@ -501,10 +769,10 @@ impl StudioApp {
         }
         let preview = self.layer_preview.as_ref().map(|(_, handle)| handle.clone());
 
-        let (color, size, symmetry) = {
+        let (color, size, symmetry, lazy_radius) = {
             let session = lock(&self.session);
             let brush = *session.brush();
-            (brush.color, brush.screen_radius_px, brush.symmetry)
+            (brush.color, brush.screen_radius_px, brush.symmetry, brush.lazy_radius_px)
         };
         let mut actions: Vec<(&'static str, Value)> = Vec::new();
 
@@ -541,6 +809,27 @@ impl StudioApp {
                     actions.push(("brush.set_screen_radius", json!({ "radius": radius })));
                 }
                 ui.label(egui::RichText::new(format!("Symmetry: {}", symmetry.label())).color(Tokens::DARK.text_dim));
+                let mut lazy = lazy_radius;
+                if ui.add(egui::Slider::new(&mut lazy, 0.0..=128.0).fixed_decimals(0).text("Lazy mouse")).changed() {
+                    actions.push(("brush.set_lazy", json!({ "radius": lazy })));
+                }
+                ui.horizontal(|ui| {
+                    if ui.button("Brush tip…").clicked()
+                        && let Some(path) =
+                            rfd::FileDialog::new().add_filter("Images", &["png", "jpg", "jpeg", "tga", "tif", "tiff", "bmp"]).pick_file()
+                    {
+                        actions.push(("brush.set_alpha", json!({ "path": path.to_string_lossy() })));
+                    }
+                    if ui.button("Round").clicked() {
+                        actions.push(("brush.clear_alpha", Value::Null));
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.add(egui::TextEdit::singleline(&mut self.brush_preset_name).desired_width(90.0).hint_text("Preset"));
+                    if ui.button("Save").clicked() {
+                        actions.push(("brush.save_preset", json!({ "name": self.brush_preset_name.clone() })));
+                    }
+                });
             });
         });
 
@@ -578,7 +867,7 @@ impl StudioApp {
         let query = self.asset_search.trim().to_ascii_lowercase();
         let matches = |label: &str| query.is_empty() || label.to_ascii_lowercase().contains(&query);
 
-        let (mat_name, mat_color, brush_color) = {
+        let (mat_name, mat_color, brush_color, preset_names, smart_material_names, smart_mask_names) = {
             let session = lock(&self.session);
             let project = session.project();
             let material = project
@@ -587,7 +876,14 @@ impl StudioApp {
                 .and_then(|id| project.scene.materials.get(*id as usize))
                 .cloned()
                 .unwrap_or_default();
-            (material.name, material.base_color, session.brush().color)
+            (
+                material.name,
+                material.base_color,
+                session.brush().color,
+                session.material_preset_names(),
+                session.smart_material_names(),
+                session.smart_mask_names(),
+            )
         };
 
         let project_ids: Vec<&'static str> = if self.asset_library == 1 {
@@ -611,6 +907,42 @@ impl StudioApp {
                 action: Some(("brush.set_color", json!({ "color": mat_color }))),
                 thumb: Thumb::Swatch(mat_color),
             });
+        }
+        if show("material") {
+            for name in &preset_names {
+                if matches(name) {
+                    tiles.push(AssetTile {
+                        label: name.clone(),
+                        tooltip: format!("Apply material preset {name}"),
+                        action: Some(("shelf.apply_material", json!({ "name": name }))),
+                        thumb: Thumb::Swatch([0.6, 0.6, 0.62, 1.0]),
+                    });
+                }
+            }
+        }
+        if show("smart_material") {
+            for name in &smart_material_names {
+                if matches(name) {
+                    tiles.push(AssetTile {
+                        label: name.clone(),
+                        tooltip: format!("Apply smart material {name}"),
+                        action: Some(("shelf.apply_smart_material", json!({ "name": name }))),
+                        thumb: Thumb::Gradient,
+                    });
+                }
+            }
+        }
+        if show("smart_mask") {
+            for name in &smart_mask_names {
+                if matches(name) {
+                    tiles.push(AssetTile {
+                        label: name.clone(),
+                        tooltip: format!("Apply smart mask {name} to the selected layer"),
+                        action: Some(("shelf.apply_smart_mask", json!({ "layer": self.active_layer, "name": name }))),
+                        thumb: Thumb::Gradient,
+                    });
+                }
+            }
         }
         if show("brush") {
             for tool in ToolKind::ALL {
@@ -734,7 +1066,8 @@ impl StudioApp {
             }
             ui.horizontal(|ui| {
                 if ui.button("Import High-Poly…").clicked()
-                    && let Some(path) = rfd::FileDialog::new().add_filter("3D meshes", &["obj", "gltf", "glb"]).pick_file()
+                    && let Some(path) =
+                        rfd::FileDialog::new().add_filter("3D meshes", &["obj", "gltf", "glb", "stl", "ply", "fbx", "dae"]).pick_file()
                 {
                     actions.push(("file.import_highpoly", json!({ "path": path.to_string_lossy() })));
                 }
@@ -823,12 +1156,76 @@ impl StudioApp {
         });
     }
 
+    /// The 2D UV view: the active set's base-colour composite with a UV wireframe overlay.
+    pub(crate) fn uv_view_panel(&mut self, ui: &mut egui::Ui) {
+        let (revision, set, material) = {
+            let session = lock(&self.session);
+            let project = session.project();
+            let set = project.active_set().cloned();
+            let material = project
+                .active_set()
+                .and_then(|set| set.materials.first())
+                .and_then(|id| project.scene.materials.get(*id as usize))
+                .cloned()
+                .unwrap_or_default();
+            (session.texture_set_revision(), set, material)
+        };
+        let Some(set) = set else {
+            ui.label(egui::RichText::new("No texture set").color(Tokens::DARK.text_dim));
+            return;
+        };
+        if self.uv_view.as_ref().is_none_or(|(cached, _)| *cached != revision) {
+            let image = substancecraft_compose::evaluate_base_color(&set, &material, 256, 256);
+            let size = [image.width as usize, image.height as usize];
+            let color = egui::ColorImage::from_rgba_unmultiplied(size, &image.to_rgba8());
+            let handle = ui.ctx().load_texture("sc.uv_view", color, egui::TextureOptions::LINEAR);
+            self.uv_view = Some((revision, handle));
+        }
+        let Some(handle) = self.uv_view.as_ref().map(|(_, handle)| handle.clone()) else { return };
+
+        let (rect, _) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
+        let side = rect.width().min(rect.height()).max(1.0);
+        let image_rect = egui::Rect::from_min_size(rect.min, egui::vec2(side, side));
+        ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, Tokens::DARK.viewport_bg);
+        ui.painter().image(handle.id(), image_rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+
+        // UV wireframe overlay (subsampled so dense meshes stay responsive).
+        let edges = {
+            let session = lock(&self.session);
+            let mesh = &session.project().scene.mesh;
+            let triangles = mesh.indices.as_chunks::<3>().0;
+            let step = (triangles.len() / 2000).max(1);
+            let mut edges: Vec<[f32; 2]> = Vec::new();
+            for triangle in triangles.iter().step_by(step) {
+                for (i, j) in [(0usize, 1usize), (1, 2), (2, 0)] {
+                    if let (Some(a), Some(b)) = (mesh.uvs.get(triangle[i] as usize), mesh.uvs.get(triangle[j] as usize)) {
+                        edges.push([a.x, a.y]);
+                        edges.push([b.x, b.y]);
+                    }
+                }
+            }
+            edges
+        };
+        let stroke = egui::Stroke::new(0.5, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 48));
+        for pair in edges.as_chunks::<2>().0 {
+            let a = egui::pos2(image_rect.left() + pair[0][0] * side, image_rect.top() + pair[0][1] * side);
+            let b = egui::pos2(image_rect.left() + pair[1][0] * side, image_rect.top() + pair[1][1] * side);
+            ui.painter().line_segment([a, b], stroke);
+        }
+    }
+
     /// Recompute the composited base-colour preview when the texture set revision changes.
     pub(crate) fn update_layer_preview(&mut self, ctx: &egui::Context, revision: u64, set: &TextureSet, material: &Material) {
         if self.layer_preview.as_ref().is_some_and(|(cached, _)| *cached == revision) {
             return;
         }
-        let image = substancecraft_compose::evaluate_base_color(set, material, 96, 96);
+        let image = {
+            let session = lock(&self.session);
+            let surface = if substancecraft_compose::stack_needs_surface(&set.layers) { session.eval_surface(96, 96) } else { None };
+            let mesh_maps = session.eval_mesh_maps();
+            let context = substancecraft_compose::EvalContext { surface: surface.as_ref(), mesh_maps: &mesh_maps };
+            substancecraft_compose::evaluate_base_color_ctx(set, material, 96, 96, &context)
+        };
         let size = [image.width as usize, image.height as usize];
         let color = egui::ColorImage::from_rgba_unmultiplied(size, &image.to_rgba8());
         let handle = ctx.load_texture("sc.layer_preview", color, egui::TextureOptions::LINEAR);

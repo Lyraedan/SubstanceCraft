@@ -12,8 +12,17 @@ use substancecraft_render::Projection;
 use crate::app::StudioApp;
 
 /// The display-mode buttons as `(display id, label)`.
-const DISPLAY_MODES: &[(&str, &str)] =
-    &[("base_color", "Base"), ("normal", "Normal"), ("roughness", "Rough"), ("metalness", "Metal"), ("uv_checker", "UV"), ("wireframe", "Wire")];
+const DISPLAY_MODES: &[(&str, &str)] = &[
+    ("base_color", "Base"),
+    ("normal", "Normal"),
+    ("roughness", "Rough"),
+    ("metalness", "Metal"),
+    ("uv_checker", "UV"),
+    ("wireframe", "Wire"),
+    ("ambient_occlusion", "AO"),
+    ("height", "Height"),
+    ("matcap", "Matcap"),
+];
 
 /// Draw the tool properties bar.
 pub(crate) fn tool_properties_bar(app: &mut StudioApp, ui: &mut egui::Ui) {

@@ -49,9 +49,12 @@ pub struct StudioApp {
     pub(crate) rename_index: usize,
     pub(crate) active_layer: usize,
     pub(crate) layer_preview: Option<(u64, egui::TextureHandle)>,
+    pub(crate) uv_view: Option<(u64, egui::TextureHandle)>,
     pub(crate) bake_preview: Option<(u64, egui::TextureHandle)>,
+    pub(crate) show_shortcuts: bool,
     pub(crate) tool: ViewportTool,
     pub(crate) asset_search: String,
+    pub(crate) brush_preset_name: String,
     pub(crate) asset_filter: usize,
     pub(crate) asset_library: usize,
     pub(crate) generator_thumbs: std::collections::HashMap<&'static str, egui::TextureHandle>,
@@ -87,9 +90,12 @@ impl StudioApp {
             rename_index: usize::MAX,
             active_layer: usize::MAX,
             layer_preview: None,
+            uv_view: None,
             bake_preview: None,
+            show_shortcuts: false,
             tool: ViewportTool::default(),
             asset_search: String::new(),
+            brush_preset_name: String::new(),
             asset_filter: 0,
             asset_library: 0,
             generator_thumbs: std::collections::HashMap::new(),
@@ -274,7 +280,7 @@ impl StudioApp {
                 }
             }
             "file.import_mesh" => {
-                if let Some(path) = rfd::FileDialog::new().add_filter("3D meshes", &["obj", "gltf", "glb"]).pick_file() {
+                if let Some(path) = rfd::FileDialog::new().add_filter("3D meshes", &["obj", "gltf", "glb", "stl", "ply", "fbx", "dae"]).pick_file() {
                     self.dispatch_path("file.import_mesh", path);
                 }
             }
@@ -323,11 +329,62 @@ impl StudioApp {
             ViewportAction::StrokeEnd => {
                 let _ = self.dispatch("paint.stroke_end", &Value::Null);
             }
+            ViewportAction::StrokeLine { u, v, scale } => {
+                self.report(self.dispatch("paint.stroke_line", &json!({ "u": u, "v": v, "scale": scale })));
+            }
+            ViewportAction::Eyedropper { u, v } => {
+                self.report(self.dispatch("paint.eyedropper", &json!({ "u": u, "v": v })));
+            }
             ViewportAction::Polyfill { triangle } => self.report(self.dispatch("paint.polyfill", &json!({ "triangle": triangle }))),
             ViewportAction::SelectTextureSet { index } => {
                 self.report(self.dispatch("texture_set.select", &json!({ "index": index })));
             }
+            ViewportAction::IsolatePart { part } => {
+                self.report(self.dispatch("scene.isolate_part", &json!({ "part": part })));
+            }
+            ViewportAction::HidePart { part } => {
+                self.report(self.dispatch("scene.hide_part", &json!({ "part": part, "hidden": true })));
+            }
+            ViewportAction::ShowAllParts => {
+                self.report(self.dispatch("scene.show_all_parts", &Value::Null));
+            }
+            ViewportAction::FillPart { part } => {
+                self.report(self.dispatch("layer.add_part_fill", &json!({ "part": part })));
+            }
+            ViewportAction::MaskLayerToPart { part } => {
+                let index = lock(&self.session).active_layer_index();
+                if let Some(index) = index {
+                    self.report(self.dispatch("layer.mask_to_part", &json!({ "index": index, "part": part })));
+                }
+            }
         }
+    }
+
+    /// A Help window listing every command that has a keyboard shortcut.
+    fn shortcuts_window(&mut self, ctx: &egui::Context) {
+        if !self.show_shortcuts {
+            return;
+        }
+        let mut open = true;
+        egui::Window::new("Keyboard Shortcuts").open(&mut open).collapsible(false).resizable(true).default_width(360.0).show(ctx, |ui| {
+            let mut entries: Vec<(&'static str, &'static str)> = self
+                .registry
+                .ids()
+                .filter_map(|id| self.registry.get(id))
+                .filter_map(|spec| spec.shortcut.map(|shortcut| (spec.label, shortcut)))
+                .collect();
+            entries.sort_by_key(|(_, shortcut)| *shortcut);
+            egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+                egui::Grid::new("sc.shortcuts").num_columns(2).spacing([18.0, 4.0]).show(ui, |ui| {
+                    for (label, shortcut) in entries {
+                        ui.label(egui::RichText::new(shortcut).monospace());
+                        ui.label(label);
+                        ui.end_row();
+                    }
+                });
+            });
+        });
+        self.show_shortcuts = open;
     }
 
     /// Fulfil a queued screenshot: request one from eframe, then save the returned image.
@@ -468,6 +525,7 @@ impl eframe::App for StudioApp {
                     DockPanel::Assets => self.assets_panel(ui),
                     DockPanel::Bake => self.bake_panel(ui),
                     DockPanel::Post => self.post_panel(ui),
+                    DockPanel::UvView => self.uv_view_panel(ui),
                 },
             )
         });
@@ -480,6 +538,8 @@ impl eframe::App for StudioApp {
         if let Some(action) = viewport_action {
             self.handle_paint_action(action);
         }
+
+        self.shortcuts_window(ui.ctx());
     }
 
     fn on_exit(&mut self) {

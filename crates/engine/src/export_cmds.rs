@@ -15,7 +15,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "file.export_textures",
             "Export Textures…",
             "File",
-            "dir: string, preset?: string, resolution?: number, format?: string, naming?: string, udim?: bool",
+            "dir: string, preset?: string, resolution?: number, format?: string, naming?: string, udim?: bool, height_to_normal?: bool, normal_strength?: number, directx_normal?: bool",
             export_textures,
         )
         .with_shortcut("Ctrl+Shift+E"),
@@ -60,6 +60,9 @@ fn export_textures(session: &mut Session, params: &Value) -> CommandResult {
     let resolution = params.get("resolution").and_then(Value::as_u64).map(|value| value as u32).unwrap_or(2048);
     let naming = params.get("naming").and_then(Value::as_str).unwrap_or("").to_string();
     let udim = params.get("udim").and_then(Value::as_bool).unwrap_or(false);
+    let height_to_normal = params.get("height_to_normal").and_then(Value::as_bool).unwrap_or(false);
+    let normal_strength = params.get("normal_strength").and_then(Value::as_f64).map(|value| (value as f32).clamp(0.0, 8.0)).unwrap_or(1.0);
+    let directx_normal = params.get("directx_normal").and_then(Value::as_bool).unwrap_or(false);
 
     let (set, material) = {
         let project = session.project();
@@ -68,8 +71,11 @@ fn export_textures(session: &mut Session, params: &Value) -> CommandResult {
         (set, material)
     };
 
-    let settings = ExportSettings { resolution, format, naming, preset, udim };
-    let written = substancecraft_io::export_set(&set, &material, &settings, std::path::Path::new(dir))
+    let settings = ExportSettings { resolution, format, naming, preset, udim, height_to_normal, normal_strength, directx_normal };
+    let surface = if substancecraft_compose::stack_needs_surface(&set.layers) { session.eval_surface(resolution, resolution) } else { None };
+    let mesh_maps = session.eval_mesh_maps();
+    let context = substancecraft_compose::EvalContext { surface: surface.as_ref(), mesh_maps: &mesh_maps };
+    let written = substancecraft_io::export_set_ctx(&set, &material, &settings, std::path::Path::new(dir), &context)
         .map_err(|err| CommandError::Failed(format!("export failed: {err}")))?;
     let files: Vec<Value> = written.iter().map(|path| json!(path.to_string_lossy())).collect();
     session.set_status(format!("exported {} files to {dir}", written.len()));

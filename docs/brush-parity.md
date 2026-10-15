@@ -13,6 +13,8 @@ _Last reviewed: 2026-10-13 (M12)._
 - [x] Jitter (particle-like scatter).
 - [x] Symmetry (horizontal, vertical, both).
 - [x] Screen-space sizing (texels-per-screen-pixel from the hit triangle's UV density).
+- [x] Alpha tips (an image shapes the dab).
+- [x] Lazy mouse (the dab lags the pointer by a configurable radius).
 
 ## Tools
 
@@ -34,6 +36,8 @@ _Last reviewed: 2026-10-13 (M12)._
 
 ## Presets and colour
 
-- [ ] Save/load brush presets.
-- [ ] Colour picker (viewport pick, swatches, palettes).
+- [x] Save/load brush presets (`brush.save_preset` / `brush.load_preset`; in-session for now).
+- [x] Eyedropper (samples the composited base colour; viewport `P` or `paint.eyedropper`).
+- [ ] Swatches / palettes.
 - [x] Brush colour and symmetry are commands and persist with the project.
+- [x] Straight-line strokes (viewport Shift-click or `paint.stroke_line`).

@@ -1,7 +1,8 @@
 //! Paint commands: stroke begin/extend/end and brush settings.
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use substancecraft_paint::{Symmetry, ToolKind};
+use substancecraft_raster::RasterImage;
 
 use crate::command::{CommandError, CommandOutcome, CommandRegistry, CommandResult, CommandSpec};
 use crate::session::Session;
@@ -25,6 +26,14 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("brush.set_color", "Set Brush Color", "Brush", "color: [r,g,b,a]", set_color),
         CommandSpec::new("brush.set_symmetry", "Set Brush Symmetry", "Brush", "mode: none | horizontal | vertical | both", set_symmetry),
         CommandSpec::new("brush.set_pressure", "Set Brush Pressure", "Brush", "size?: bool, opacity?: bool", set_pressure),
+        CommandSpec::new("brush.set_lazy", "Set Lazy Mouse", "Brush", "radius: number (texture pixels)", set_lazy),
+        CommandSpec::new("brush.set_alpha", "Set Brush Alpha", "Brush", "path: string", set_alpha),
+        CommandSpec::new("brush.clear_alpha", "Clear Brush Alpha", "Brush", "no parameters", clear_alpha),
+        CommandSpec::new("brush.save_preset", "Save Brush Preset", "Brush", "name: string", save_preset),
+        CommandSpec::new("brush.load_preset", "Load Brush Preset", "Brush", "name: string", load_preset),
+        CommandSpec::new("brush.list_presets", "List Brush Presets", "Brush", "no parameters", list_presets),
+        CommandSpec::new("paint.stroke_line", "Stroke Line", "Brush", "u: number, v: number, pressure?: number, scale?: number", stroke_line),
+        CommandSpec::new("paint.eyedropper", "Eyedropper", "Brush", "u: number, v: number", eyedropper),
     ]
 }
 
@@ -68,6 +77,68 @@ fn stroke_extend(session: &mut Session, params: &Value) -> CommandResult {
 fn stroke_end(session: &mut Session, _params: &Value) -> CommandResult {
     session.end_stroke();
     Ok(CommandOutcome::message("stroke end"))
+}
+
+fn stroke_line(session: &mut Session, params: &Value) -> CommandResult {
+    let (u, v) = required_uv("paint.stroke_line", params)?;
+    session.stroke_line(u, v, pressure(params), scale(params));
+    Ok(CommandOutcome::message("stroke line"))
+}
+
+fn eyedropper(session: &mut Session, params: &Value) -> CommandResult {
+    let (u, v) = required_uv("paint.eyedropper", params)?;
+    match session.eyedropper(u, v) {
+        Some(color) => Ok(CommandOutcome::data(json!({ "color": color }))),
+        None => Err(invalid("paint.eyedropper", "no active texture set to sample")),
+    }
+}
+
+fn set_lazy(session: &mut Session, params: &Value) -> CommandResult {
+    let radius = number("brush.set_lazy", params, "radius")?.clamp(0.0, 512.0);
+    session.brush_mut().lazy_radius_px = radius;
+    Ok(CommandOutcome::message(format!("lazy mouse: {radius:.0}px")))
+}
+
+fn set_alpha(session: &mut Session, params: &Value) -> CommandResult {
+    let path = params.get("path").and_then(Value::as_str).ok_or_else(|| invalid("brush.set_alpha", "expected a \"path\" string"))?;
+    let loaded = substancecraft_codecs::load_rgba8(path).map_err(|err| invalid("brush.set_alpha", &format!("could not load image: {err}")))?;
+    if loaded.width == 0 || loaded.height == 0 {
+        return Err(invalid("brush.set_alpha", "the image is empty"));
+    }
+    let mut image = RasterImage::new(loaded.width, loaded.height);
+    for (slot, value) in image.pixels.iter_mut().zip(loaded.pixels) {
+        *slot = value;
+    }
+    session.set_brush_alpha(Some(image));
+    Ok(CommandOutcome::message(format!("brush alpha set ({}×{})", loaded.width, loaded.height)))
+}
+
+fn clear_alpha(session: &mut Session, _params: &Value) -> CommandResult {
+    session.set_brush_alpha(None);
+    Ok(CommandOutcome::message("brush alpha cleared"))
+}
+
+fn save_preset(session: &mut Session, params: &Value) -> CommandResult {
+    let name = params.get("name").and_then(Value::as_str).ok_or_else(|| invalid("brush.save_preset", "expected a \"name\" string"))?;
+    if session.save_brush_preset(name) {
+        Ok(CommandOutcome::message(format!("saved preset {name}")))
+    } else {
+        Err(invalid("brush.save_preset", "name must not be empty"))
+    }
+}
+
+fn load_preset(session: &mut Session, params: &Value) -> CommandResult {
+    let name = params.get("name").and_then(Value::as_str).ok_or_else(|| invalid("brush.load_preset", "expected a \"name\" string"))?;
+    if session.load_brush_preset(name) {
+        Ok(CommandOutcome::message(format!("loaded preset {name}")))
+    } else {
+        Err(invalid("brush.load_preset", &format!("no preset named {name}")))
+    }
+}
+
+fn list_presets(session: &mut Session, _params: &Value) -> CommandResult {
+    let names = session.brush_preset_names();
+    Ok(CommandOutcome::data(json!({ "presets": names })))
 }
 
 fn polyfill(session: &mut Session, params: &Value) -> CommandResult {
@@ -259,5 +330,29 @@ mod tests {
         assert!(session.layers().map(|stack| stack.len()).unwrap_or(0) > before);
         assert!(session.undo());
         assert_eq!(session.layers().map(|stack| stack.len()).unwrap_or(0), before);
+    }
+
+    #[test]
+    fn brush_presets_round_trip() {
+        let mut session = Session::new("test");
+        session.brush_mut().radius_px = 12.0;
+        assert!(save_preset(&mut session, &json!({ "name": "Big" })).is_ok());
+        session.brush_mut().radius_px = 3.0;
+        assert!(load_preset(&mut session, &json!({ "name": "Big" })).is_ok());
+        assert!((session.brush().radius_px - 12.0).abs() < 1e-6);
+        let data = list_presets(&mut session, &Value::Null).expect("list").data.expect("data");
+        assert!(data.get("presets").and_then(Value::as_array).is_some_and(|names| names.len() == 1));
+        assert!(load_preset(&mut session, &json!({ "name": "Nope" })).is_err());
+        assert!(save_preset(&mut session, &json!({ "name": "" })).is_err());
+    }
+
+    #[test]
+    fn stroke_line_and_eyedropper_are_graceful() {
+        let mut session = Session::new("test");
+        assert!(stroke_line(&mut session, &json!({ "u": 0.2, "v": 0.5 })).is_ok());
+        assert!(stroke_line(&mut session, &json!({ "u": 0.8, "v": 0.5 })).is_ok());
+        assert!(!session.is_stroking());
+        assert!(eyedropper(&mut session, &json!({ "u": 0.5, "v": 0.5 })).is_ok());
+        assert!(eyedropper(&mut session, &Value::Null).is_err());
     }
 }

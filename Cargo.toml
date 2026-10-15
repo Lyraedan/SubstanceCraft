@@ -64,6 +64,9 @@ exr = "1.74"
 ktx2 = "0.5"
 gltf = "1.4"
 obj = "0.10"
+stl_io = "0.11"
+ply-rs = "0.1"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 
 # Serialization, errors, diagnostics.
 serde = { version = "1", features = ["derive"] }

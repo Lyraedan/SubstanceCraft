@@ -6,10 +6,16 @@
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod presets;
+
 use std::f32::consts::TAU;
 
 use substancecraft_doc::{Filter, Generator};
 use substancecraft_raster::RasterImage;
+
+pub use presets::{
+    MaterialPreset, SmartMask, SmartMaterial, material_preset, material_presets, smart_mask, smart_masks, smart_material, smart_materials,
+};
 
 /// Generate a grayscale texture (value replicated across RGB, alpha 1).
 pub fn generate(generator: &Generator, width: u32, height: u32) -> RasterImage {
